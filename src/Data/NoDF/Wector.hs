@@ -10,11 +10,15 @@ import Data.Finite
 import GHC.TypeNats --  (Nat, KnownNat)
 import qualified Data.Vector.Mutable.Sized as MS -- (Vector)
 import Control.Monad.ST
+import Data.Functor.Identity
 
+import qualified Data.Foldable as F
+import qualified Data.List as List
+import Data.Coerce (coerce)
 
 -- * Operations on permutation
 --
-infixl 5 @>, @>$, @>=, @>~
+infixl 5 @>, @>$, @>=, @>~, @=>
 (@>) :: Vector n (Finite m) -> Vector m a -> Vector n a
 p @> v = fmap (index v) p
 
@@ -28,6 +32,8 @@ p @>= v = fmap ((index v) =<<) p
 p @>~ v = sequence <$> p @>$ v
 
 
+(@=>) :: Vector n (Identity (Finite m)) -> Vector m a -> Vector n a
+p @=> v = S.withVectorUnsafe coerce p @> v
 -- | A "double" vector with a shared spine
 data Wector n grp a =
             Wector { windex  :: Vector n (Finite grp)
@@ -49,6 +55,11 @@ composeW :: Monad f => Wector a ab (f (Finite a)) -> Wector ab abcd (f (Finite a
 composeW a ab = Wector ( windex a @> windex ab)
                       ( witems ab @>= witems a)
                       
+
+-- | op can by @>= or @>~ or @>$
+-- composeWith :: Monad f => Wector a ab (f (Finite a)) -> Wector ab abcd (f (Finite ab)) -> Wector a abcd (f (Finite a))
+composeWith op a ab = Wector ( windex a @> windex ab)
+                      ( witems ab `op` witems a)
 
 inverseW :: Wector n grp (Finite n) -> Wector grp n (Finite grp)
 inverseW w = Wector ( witems w )
@@ -144,15 +155,16 @@ taking n v f = let
            in f $ Wector sel back
 
 
-selectingWith  :: forall n a r . KnownNat n => (Unsized.Vector (Finite n) -> Unsized.Vector (Finite n)) -> Vector n a -> (forall sel . KnownNat sel => Wector sel n (Maybe (Finite sel)) -> r) -> r
+-- | If subset should return Maybe insteaf of List
+selectingWith  :: forall n a r . KnownNat n => (Unsized.Vector (Finite n) -> Unsized.Vector (Finite n)) -> Vector n a -> (forall sel . KnownNat sel => Wector sel n [Finite sel] -> r) -> r
 selectingWith select v f = let
    selection = select $ fromSized 
                  $ S.generate id
    in case selection of
         SomeSized sel -> let 
            back = runST $ do
-                        mv <- MS.replicate Nothing
-                        S.imapM_ (\is i -> MS.write mv i (Just is)) sel
+                        mv <- MS.replicate []
+                        S.imapM_ (\is i -> MS.modify mv (is:) i) $ sel
                         S.freeze mv
            in f $ Wector sel back
 
@@ -161,19 +173,36 @@ main :: IO ()
 main = do
    withSizedList [("a", 2), ("c", 1), ("m", 6), ("w", 0), ("c", 3) , ("p", 0) ] $ \v'q -> do
       let (v,q) = S.unzip v'q
-      -- selecting (fmap (`elem` ["c", "w"]) v) $ \s1_ -> case s1_ of
-      selectingWith id v $ \s1_ -> case s1_ of
-           (s1 :: Wector s1 n (Maybe (Finite s1))) ->
-                selectingWith (\u -> u <> Unsized.reverse u) (windex s1 @> v) $ \s2_ -> case s2_ of
-                  (s2 :: Wector s2 s1 (Maybe (Finite s2))) -> do
+      selecting (fmap (`elem` ["c", "w"]) v) $ \s1_ -> case F.toList <$> s1_ of
+      -- selectingWith id v $ \s1_ -> case s1_ of
+           (s1 :: Wector s1 n ([ (Finite s1)])) ->
+                -- selectingWith (\u -> u <> Unsized.reverse u) (windex s1 @> v) $ \s2_ -> case s2_ of
+                -- selectingWith (Unsized.take 1 . Unsized.drop 1) (windex s1 @> v) $ \s2_ -> case s2_ of
+                selectingWith (Unsized.fromList . map snd
+                                                . List.sort
+                                                . map (\i -> (S.index v (S.index (windex s1) i), i))
+                                                . Unsized.toList) (windex s1 @> v) $ \s2_ -> case s2_ of
+                  (s2 :: Wector s2 s1 ([ (Finite s2) ])) -> do
                        print ("S1", s1)
+                       let q1 = S.replicate $ S.sum $ windex s1 @> q :: Vector s1 Int
                        print ("S2", s2, windex s2 @> windex s1 @> v)
-                       let q2 = S.iterateN (+1) 0 :: Vector s2 Int
+                       let q2 = S.iterateN (+1) 100 :: Vector s2 Int
                        print q2
                        
-                       let s2' = composeW s2 s1
+                       let s2' = composeWith (@>=) s2 $ F.toList <$> s1
                        print $ windex s2' @> q
                        print $ wexpand s2'  @>$ v'q
-                       print $ S.zip v $ witems s2'  @>$ q2
+                       mapM_ print $ S.zip4 v q (witems s1 @>$ q1) (witems s2'  @>$ q2)
+                       let s2m = traverse go s2'
+                           go xs = case xs of 
+                                      [x] -> Just (Just x)
+                                      [] -> Just Nothing
+                                      _ -> Nothing
+                       case (s2m, traverse go s1) of
+                          (Just s2M, Just s1M) -> mapM_ print $ S.zip3 v (witems s1M @>$ q1) (witems s2M  @>$ q2)
+                          _ -> return ()
+                           
+
+
 
         
