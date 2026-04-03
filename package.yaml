@@ -1,0 +1,84 @@
+name:                nodf
+version:             0.1.0.0
+#synopsis:
+#description:
+homepage:            https://github.com/maxigit/nodf#readme
+license:             BSD-3-Clause
+category:            Statistics
+extra-source-files:
+- README.md
+- CHANGELOG.md
+
+dependencies:
+- base >= 4.7 && < 5
+- vector-sized >= 1.6.1 && <2
+- vector >= 0.13.2.0 && < 1
+- finite-typelits >= 0.1.6 && <1
+- vector-algorithms >= 0.9.1 && <1
+
+ghc-options:
+- -Wall
+# - -Wcompat
+- -Widentities
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wmissing-export-lists
+- -Wmissing-home-modules
+- -Wpartial-fields
+- -Wredundant-constraints
+
+executables:
+  nodf:
+    source-dirs:      app
+    main:             Main.hs
+    when:
+    - condition: flag(library-only)
+      buildable: false
+    - condition: (flag(dev))
+      then:
+        ghc-options:
+        - -O0
+      else:
+        ghc-options:
+        - -O2
+
+library:
+  source-dirs:
+  - src
+  - app
+  when:
+  - condition: (flag(dev)) || (flag(library-only))
+    then:
+      ghc-options:
+      - -Werror
+      # - -Wincomplete-record-updates
+      - -Wincomplete-patterns
+      - -W
+      - -Wno-partial-type-signatures
+      - -Wno-type-defaults
+      - -Wno-missing-local-signatures
+      # - -fno-max-relevant-binds
+      - -O0
+      - -j6
+      cpp-options: -DDEVELOPMENT
+    else:
+      ghc-options:
+      # - -w
+      - -W
+      - -fwarn-tabs
+      - -Wno-type-defaults
+      - -Wno-partial-type-signatures
+      - -O2
+      - -j6
+
+github: maxigit/nodf
+
+flags:
+  library-only:
+    description: Normal use
+    manual: false
+    default: false
+  dev:
+    description: Turn on development settings
+    manual: false
+    default: false
