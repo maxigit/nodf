@@ -161,15 +161,19 @@ main :: IO ()
 main = do
    withSizedList [("a", 2), ("c", 1), ("m", 6), ("w", 0), ("c", 3) , ("p", 0) ] $ \v'q -> do
       let (v,q) = S.unzip v'q
-      selecting (fmap (`elem` ["c", "w"]) v) $ \s1_ -> case s1_ of
+      -- selecting (fmap (`elem` ["c", "w"]) v) $ \s1_ -> case s1_ of
+      selectingWith id v $ \s1_ -> case s1_ of
            (s1 :: Wector s1 n (Maybe (Finite s1))) ->
-                taking 1 (windex s1 @> v) $ \s2_ -> case s2_ of
+                selectingWith (\u -> u <> Unsized.reverse u) (windex s1 @> v) $ \s2_ -> case s2_ of
                   (s2 :: Wector s2 s1 (Maybe (Finite s2))) -> do
                        print ("S1", s1)
-                       print ("S2", s2)
+                       print ("S2", s2, windex s2 @> windex s1 @> v)
+                       let q2 = S.iterateN (+1) 0 :: Vector s2 Int
+                       print q2
                        
                        let s2' = composeW s2 s1
                        print $ windex s2' @> q
                        print $ wexpand s2'  @>$ v'q
+                       print $ S.zip v $ witems s2'  @>$ q2
 
         
