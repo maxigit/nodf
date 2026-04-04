@@ -15,6 +15,7 @@ import Data.Functor.Identity
 import qualified Data.Foldable as F
 import qualified Data.List as List
 import Data.Coerce (coerce, Coercible)
+import qualified Data.Vector.Algorithms.Intro as Algo
 
 -- * Operations on permutation
 --
@@ -116,6 +117,17 @@ selectingWith select v f = let
                         S.freeze mv
            in f $ Wector sel back
 
+
+ordering :: forall n a r . (KnownNat n, Ord a) => Vector n a -> (forall sorted . KnownNat sorted => Wector sorted n (Identity (Finite sorted )) -> r ) -> r
+ordering v f = let
+  ix = S.generate id :: Vector n (Finite n)
+  in case Unsized.modify (Algo.sortBy (\i j -> compare (v `index` i) (v `index` j))) (fromSized ix) of
+         SomeSized ( ix' :: KnownNat sorted => Vector sorted (Finite n)) -> let
+              items =  runST $ do
+                  mv <- MS.unsafeNew
+                  S.imapM_ (\i' i -> MS.write mv i (Identity i') ) ix'
+                  S.freeze mv
+              in f $ Wector ix' items
 
 main :: IO ()
 main = do
