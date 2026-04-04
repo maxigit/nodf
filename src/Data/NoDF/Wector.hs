@@ -14,7 +14,7 @@ import Data.Functor.Identity
 
 import qualified Data.Foldable as F
 import qualified Data.List as List
-import Data.Coerce (coerce)
+import Data.Coerce (coerce, Coercible)
 
 -- * Operations on permutation
 --
@@ -33,7 +33,11 @@ p @>~ v = sequence <$> p @>$ v
 
 
 (@=>) :: Vector n (Identity (Finite m)) -> Vector m a -> Vector n a
-p @=> v = S.withVectorUnsafe coerce p @> v
+p @=> v = coerceV p @> v
+
+coerceV :: Coercible a b =>  Vector n a -> Vector n b
+coerceV = S.withVectorUnsafe coerce
+
 -- | A "double" vector with a shared spine
 data Wector n grp a =
             Wector { windex  :: Vector n (Finite grp)
@@ -61,12 +65,10 @@ composeW a ab = Wector ( windex a @> windex ab)
 composeWith op a ab = Wector ( windex a @> windex ab)
                       ( witems ab `op` witems a)
 
-inverseW :: Wector n grp (Finite n) -> Wector grp n (Finite grp)
-inverseW w = Wector ( witems w )
-                    ( windex w)
+inverseW :: Wector n grp (Identity (Finite n)) -> Wector grp n (Identity (Finite grp))
+inverseW w = Wector ( coerceV $ witems w )
+                    ( coerceV $ windex w)
                     
-inverseWM :: Monad m => Wector n grp (m (Finite n)) -> m (Wector grp n (Finite grp))
-inverseWM w = fmap inverseW $ sequence w 
 
 -- | op can be @> or @>$
 broadcastWith :: Monad f => (Vector grp a -> Vector m (Finite grp) -> Vector g2 b) -> Wector n grp a -> Wector m grp (f (Finite g2)) -> f ( Wector n g2 b )
@@ -74,60 +76,6 @@ broadcastWith op a b = fmap go $ sequence (witems b) where
             go itemsb = Wector ( windex a @> itemsb)
                            ( witems a `op` windex b)
 
-     {-
-infixl 5 @>, <@, @$>, <$@
-(@>) :: Vector n (Finite m) -> Vector m a -> Vector n a
-p @> v = fmap (index v) p
-(<@) :: Vector m a -> Vector n (Finite m) -> Vector n a
-(<@) = flip (@>)
-
-(@$>) :: Functor f => Vector n (f (Finite m)) -> Vector m a -> Vector n (f a)
-p @$> v = fmap (fmap (index v)) p
-(<$@) :: Functor f => Vector m a -> Vector n (f (Finite m)) -> Vector n (f a)
-(<$@) = flip (@$>)
-
-
-wbroadcast :: Wector n grp a -> Vector n a
-wbroadcast w = windex w @> wspine w
-
-wextra :: Functor f => Wector n grp (f (Finite n)) -> Vector grp (f (Finite grp))
-wextra w = wspine w @$> windex w
-
-infixl 5 @@<, @@$<, @@><, @@$><
-(@@<) :: Wector n grp (Finite m) -> Vector m a -> Vector grp a
-w @@< v = wspine w @> v
-
-(@@$<) :: Functor f => Wector n grp (f (Finite m)) -> Vector m a -> Vector grp (f a)
-w @@$< v = wspine w @$> v
-
-(@@><) :: Wector n grp (Finite m) -> Vector m a -> Vector n a
-w @@>< v = wbroadcast w @> v
-
-(@@$><) :: Functor f => Wector n grp (f (Finite m)) -> Vector m a -> Vector n (f a)
-w @@$>< v = wbroadcast w @$> v
-
-(@@$<>) :: Functor f => Wector n grp (f (Finite n)) -> Vector grp a -> Vector grp (f a)
-w @@$<> v = wextra w @$> v
-
-nindex :: Functor f => Wector n grp (f a) -> Vector grp (f (Finite grp))
-nindex w = imap (\i m -> fmap (const i) m) (wspine w )
-
-compose wa wb = Wector (windex wa @> windex wb)
-                       (wspine wa @> wspine wb)
-composeF wa wb = Wector (windex wa @> windex wb)
-                       (wspine wa @$> wspine wb)
-composeI wa wb = Wector (windex wa <@ wspine wb)
-                       (wspine wa @> windex wb)
-composeI2 wa wb = Wector (windex wa <@ wspine wb)
-                       (wspine wa @$> windex wb)
-
-xx :: Monad f => Vector n (f (Finite m)) -> Vector m (f a) -> Vector n (f a)
-xx va vb = fmap ((index (vb)) =<<) va
-
-xxf f va vb = fmap ((f $ index (vb)))  va
-
-
--}
 
 selecting ::  forall n r . KnownNat n => Vector n Bool -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) ->  r ) -> r
 selecting v f = let 
