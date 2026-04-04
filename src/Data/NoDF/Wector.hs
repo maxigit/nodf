@@ -77,6 +77,9 @@ broadcastWith op a b = fmap go $ sequence (witems b) where
             go itemsb = Wector ( windex a @> itemsb)
                            ( witems a `op` windex b)
 
+composeItems :: Functor f => (Wector m n (Identity (Finite m))) -> (Wector m grp (f (Finite m))) -> Wector n grp (f (Finite n))
+composeItems a b = Wector (witems a @=> windex b)
+                          ( witems b @>$ windex a)
 
 selecting ::  forall n r . KnownNat n => Vector n Bool -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) ->  r ) -> r
 selecting v f = let 
@@ -128,6 +131,64 @@ ordering v f = let
                   S.imapM_ (\i' i -> MS.write mv i (Identity i') ) ix'
                   S.freeze mv
               in f $ Wector ix' items
+
+segmenting :: forall n a r . (KnownNat n, Eq a) => Vector n a -> (forall seg . KnownNat seg => Wector n seg (Unsized.Vector (Finite n)) -> r ) -> r
+segmenting v f = let
+   groupsWithValue = Unsized.groupBy (\a b -> snd a == snd b) (fromSized $ S.indexed v)
+   ugroups = map (fmap fst) groupsWithValue  -- just keep the index
+   in withSizedList ugroups $ \(groups :: Vector seg (Unsized.Vector (Finite n))) -> let
+           gindex = runST $ do
+                 mv <- MS.unsafeNew
+                 S.imapM_ (\gi (is :: Unsized.Vector (Finite n)) -> mapM_ (\i -> MS.write mv i gi ) is) groups
+                 S.freeze mv
+           
+           in f $ Wector gindex groups
+   
+grouping :: forall n a r . (KnownNat n, Ord a) => Vector n a -> (forall grp . KnownNat grp => Wector n grp (Unsized.Vector (Finite n)) -> r ) -> r
+grouping v f = 
+   -- TODO rewrite to allocate all slices as one vector then sliced
+   -- segmenting do that, witems are slices of a main vector
+   -- witems group should be the same if possible
+   ordering v $ \order ->
+            segmenting (windex order @> v) $ \seg ->
+                       f (composeItems order seg)
+
+joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
+joining v v' f = 
+   grouping v $ \grp -> case grp of 
+      (_ :: Wector n grp (Unsized.Vector (Finite n))) ->
+        grouping v' $ \grp' -> case grp' of 
+          ( _ :: Wector n' grp' (Unsized.Vector (Finite n'))) -> 
+             -- get a unique represent for each group
+             -- we assume that each groups are not empty
+             let uniqV = Unsized.head <$> witems grp @>$ v 
+                 uniqV' = Unsized.head <$> witems grp' @>$ v' 
+                 ix'ac :: Vector grp (Maybe (Finite grp'))
+                 ix'ac = S.unfoldrN' (S.length' uniqV)
+                                   (\(i,i'm) -> case i'm of 
+                                                Nothing -> (Nothing, (i+1, Nothing))
+                                                Just i' -> let value = index uniqV i
+                                                               findNext j' = let value' = index uniqV' j'
+                                                                             in case compare value value' of 
+                                                                                  EQ -> Just (j', True)
+                                                                                  LT -> Just (j', False)
+                                                                                  GT -> next j' >>=  findNext 
+                                                               next j' = if maxBound == j'
+                                                                         then Nothing
+                                                                         else Just (succ j' )
+                                                           in case findNext i'  of
+                                                                Nothing -> (Nothing, (i+1, Nothing)) -- nothing to find anymore
+                                                                Just (fi, True) -> (Just fi, (i+1, Just fi)) -- TODO incremente
+                                                                Just (fi, False) -> (Nothing, (i+1, Just fi))
+
+                                   )
+                                   (0, Just 0)
+                 expand :: Maybe (Finite grp') -> Unsized.Vector (Finite m)
+                 expand gi'm = case gi'm of 
+                                Nothing -> mempty
+                                Just gi' -> witems grp' `S.index` gi'
+
+             in f $ Wector (S.generate id) (expand <$> ix'ac)
 
 main :: IO ()
 main = do
