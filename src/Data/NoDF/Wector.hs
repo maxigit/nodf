@@ -156,14 +156,14 @@ grouping v f =
 joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
 joining v v' f = 
    grouping v $ \grp -> case grp of 
-      (_ :: Wector n grp (Unsized.Vector (Finite n))) ->
+      (_ :: Wector n joined (Unsized.Vector (Finite n))) ->
         grouping v' $ \grp' -> case grp' of 
           ( _ :: Wector n' grp' (Unsized.Vector (Finite n'))) -> 
              -- get a unique represent for each group
              -- we assume that each groups are not empty
              let uniqV = Unsized.head <$> witems grp @>$ v 
                  uniqV' = Unsized.head <$> witems grp' @>$ v' 
-                 ix'ac :: Vector grp (Maybe (Finite grp'))
+                 ix'ac :: Vector joined (Maybe (Finite grp'))
                  ix'ac = S.unfoldrN' (S.length' uniqV)
                                    (\(i,i'm) -> case i'm of 
                                                 Nothing -> (Nothing, (i+1, Nothing))
@@ -188,10 +188,28 @@ joining v v' f =
                                 Nothing -> mempty
                                 Just gi' -> witems grp' `S.index` gi'
 
-             in f $ Wector (S.generate id) (expand <$> ix'ac)
+             in f $ Wector (windex grp) (expand <$> ix'ac)
 
 main :: IO ()
 main = do
+  withSizedList [ ("Adam-Black", "Adam", 2)
+                , ("Adam-Navy", "Adam", 10)
+                , ("Fiddle-Navy", "Fiddle", 24)
+                , ("Adele-BLk", "Adele", 2)
+                ] $ \sales -> do
+     let (style, shape, qty) = S.unzip3 sales
+     withSizedList [ ("Adam", "Plate")
+                   , ("Fiddle", "Plate")
+                   , ("Adele", "Cup")
+                   ] $ \style'shape -> do
+       let (style_shape, shape_shape) = S.unzip style'shape 
+       
+       joining style style_shape $ \by_style -> do
+         print " ------- BY SHAPE ------ "
+         print by_style
+         print $ wbroadcast by_style @>$ shape_shape
+     
+_main = do
    withSizedList [("a", 2), ("c", 1), ("m", 6), ("w", 0), ("c", 3) , ("p", 0) ] $ \v'q -> do
       let (v,q) = S.unzip v'q
       selecting (fmap (`elem` ["c", "w"]) v) $ \s1_ -> case F.toList <$> s1_ of
