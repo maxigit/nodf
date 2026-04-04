@@ -39,6 +39,24 @@ p @=> v = coerceV p @> v
 coerceV :: Coercible a b =>  Vector n a -> Vector n b
 coerceV = S.withVectorUnsafe coerce
 
+-- | Apply a function to sub vector which keep their size identical
+-- Allocate only one big vector
+rmap :: KnownNat n => Vector grp (Unsized.Vector  (Finite n)) -> (forall s . Vector s a -> Vector s b) -> Maybe b -> Vector n a -> Vector n b
+rmap grpv f b0m v =
+   runST $ do
+       mv <- case b0m of 
+               Nothing ->  MS.unsafeNew
+               Just b0 -> MS.replicate b0
+       S.mapM (\g -> case g of
+                         SomeSized gz -> do
+                            S.imapM_ (\gi b -> -- index in the current group
+                                                     MS.write mv (index gz gi) b
+                                                  )
+                                                  (f $ gz @> v)
+              )
+              grpv
+       S.freeze mv
+  
 -- | A "double" vector with a shared spine
 data Wector n grp a =
             Wector { windex  :: Vector n (Finite grp)
@@ -153,7 +171,7 @@ grouping v f =
             segmenting (windex order @> v) $ \seg ->
                        f (composeItems order seg)
 
-joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
+joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Unsized.Vector (Finite n)) -> Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
 joining v v' f = 
    grouping v $ \grp -> case grp of 
       (_ :: Wector n joined (Unsized.Vector (Finite n))) ->
@@ -163,10 +181,21 @@ joining v v' f =
              -- we assume that each groups are not empty
              let uniqV = Unsized.head <$> witems grp @>$ v 
                  uniqV' = Unsized.head <$> witems grp' @>$ v' 
+                 -- foreach i in the left group we try to find the corresponding value 
+                 -- in the right group and collect the index in grp'
                  ix'ac :: Vector joined (Maybe (Finite grp'))
                  ix'ac = S.unfoldrN' (S.length' uniqV)
                                    (\(i,i'm) -> case i'm of 
+                                   -- ^ ^^^
+                                   -- |  |
+                                   -- |  +--------- right cursor  Nothing if  last right value < left cussor (
+                                   -- |                nothing to join anymore
+                                   -- +------------ left cursor
                                                 Nothing -> (Nothing, (i+1, Nothing))
+                                                --          ^^^^^^^   ^^
+                                                --            |        |
+                                                --            |        +--- advance left cursor
+                                                --            +------------ return value
                                                 Just i' -> let value = index uniqV i
                                                                findNext j' = let value' = index uniqV' j'
                                                                              in case compare value value' of 
@@ -188,26 +217,82 @@ joining v v' f =
                                 Nothing -> mempty
                                 Just gi' -> witems grp' `S.index` gi'
 
-             in f $ Wector (windex grp) (expand <$> ix'ac)
+             in f grp
+                  $ Wector (windex grp) (expand <$> ix'ac) -- join
+
+-- | Moving window
+moving :: KnownNat n => Int -> Wector n n (Unsized.Vector (Finite n))
+moving size = let
+    u = S.fromSized $ S.generate id
+    windex = S.generate id
+    witems = S.generate (\fi -> Unsized.drop (fromIntegral fi + 1 - size) $ Unsized.take  (fromIntegral fi + 1) u)
+    in Wector windex witems
+
+to1 :: Foldable f => f a -> Maybe a
+to1 l = case F.toList l of 
+          [a] -> Just a
+          _ -> Nothing
+
+toI :: Foldable f => f a -> Maybe (Identity a)
+toI l = case F.toList l of 
+          [a] -> Just (Identity a)
+          _ -> Nothing
+
+to01 :: Foldable f => f a -> Maybe (Maybe a)
+to01 l = case F.toList l of 
+          [] -> Just Nothing
+          [a] -> Just (Just a)
+          _ -> Nothing
 
 main :: IO ()
 main = do
-  withSizedList [ ("Adam-Black", "Adam", 2)
-                , ("Adam-Navy", "Adam", 10)
-                , ("Fiddle-Navy", "Fiddle", 24)
-                , ("Adele-BLk", "Adele", 2)
+  withSizedList [ ("Adam-Navy", "Adam", 2)
+                , ("Adele-BLk", "Adele", 3)
+                , ("Adam-Black", "Adam", 10)
+                , ("Fiddle-Navy", "Fiddle", 64)
+                , ("Fiddle-Black", "Fiddle", 17)
+                , ("Fiddle-Blue", "Fiddle", 23)
                 ] $ \sales -> do
-     let (style, shape, qty) = S.unzip3 sales
+     let (sku, style, qty) = S.unzip3 sales
      withSizedList [ ("Adam", "Plate")
                    , ("Fiddle", "Plate")
                    , ("Adele", "Cup")
                    ] $ \style'shape -> do
        let (style_shape, shape_shape) = S.unzip style'shape 
        
-       joining style style_shape $ \by_style -> do
+       joining style style_shape $ \by_style on_style_ -> do
+         let Just on_style = traverse toI on_style_
          print " ------- BY SHAPE ------ "
-         print by_style
-         print $ wbroadcast by_style @>$ shape_shape
+         print on_style
+         mapM_ print $ S.zip sku $  wbroadcast on_style @=> style'shape -- shape_shape
+         print " ---- SUM by STYLE ---- "
+         let qty_style = Unsized.sum <$> witems by_style @>$ qty
+         print qty_style
+         let shape = wbroadcast on_style @=> shape_shape
+         grouping shape $ \by_shape  ->  do
+           print by_shape
+           let qty_shape = Unsized.sum <$> witems by_shape @>$ qty
+           print qty_shape
+           mapM_ print $ S.zip4 sku
+                                (windex by_style @> qty_style)
+                                (wbroadcast on_style @=> shape_shape )
+                                (windex by_shape @> qty_shape)
+                                
+           print " ---- RUNNING ---- "
+           print $ rmap (witems by_shape) (S.postscanl' (+) 0)  Nothing qty 
+     print " --- Moving avegare -- "
+     let ma = moving 2
+     print $ witems ma @>$ qty
+     print $ Unsized.sum <$> witems ma @>$ qty
+     print " ==== Moving sorted === "
+     ordering sku  $ \by_sku ->  do
+         -- let mo = composeWith _ (moving 2) by_sku
+         let mo = composeItems by_sku (moving 2)
+         mapM_ print $ S.zip sales $  wbroadcast mo @>$ qty
+
+
+            
+
      
 _main = do
    withSizedList [("a", 2), ("c", 1), ("m", 6), ("w", 0), ("c", 3) , ("p", 0) ] $ \v'q -> do
