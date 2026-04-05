@@ -32,6 +32,7 @@ flag library-only
 
 library
   exposed-modules:
+      Data.NoDF
       Data.NoDF.Wector
       Main
   other-modules:
