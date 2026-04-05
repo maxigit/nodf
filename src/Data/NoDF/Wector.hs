@@ -78,6 +78,14 @@ composeW :: Monad f => Wector a ab (f (Finite a)) -> Wector ab abcd (f (Finite a
 composeW a ab = Wector ( windex a @> windex ab)
                       ( witems ab @>= witems a)
                       
+-- | chaining selections
+composing :: Monad f => ((Wector ab abcd (f (Finite ab))  -> r) -> r)
+                     -> ((Wector a ab (f (Finite a)) -> r) -> r)
+                     -> ((Wector a abcd (f (Finite a)) -> r ) -> r)
+composing cab ca f = cab (\wab  -> ca (\wa -> f $ composeW wa wab ))
+
+
+cab >.> ca = composing cab ca
 
 -- | op can by @>= or @>~ or @>$
 -- composeWith :: Monad f => Wector a ab (f (Finite a)) -> Wector ab abcd (f (Finite ab)) -> Wector a abcd (f (Finite a))
