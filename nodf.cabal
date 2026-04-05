@@ -32,10 +32,7 @@ flag library-only
 
 library
   exposed-modules:
-      Data.Butterfly
-      Data.NoDF.Types
       Data.NoDF.Wector
-      PVector
       Main
   other-modules:
       Paths_nodf
