@@ -112,6 +112,20 @@ selecting v f = let
                         S.freeze mv
            in f $ Wector sel back
 
+-- | specialized version of selecting which doesn't create an intermedaiat
+filtering :: forall a n r . KnownNat n => (a -> Bool) -> Vector n a -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) -> r ) -> r
+filtering keep v f = let
+   selection = Unsized.filter (\fi -> keep (v `index` fi) )
+                                                              $ fromSized 
+                                                              $ S.generate id
+   in case selection of
+        SomeSized sel -> let 
+           back = runST $ do
+                        mv <- MS.replicate Nothing
+                        S.imapM_ (\is i -> MS.write mv i (Just is)) sel
+                        S.freeze mv
+           in f $ Wector sel back
+
 taking :: forall n a r . KnownNat n => Int -> Vector n a -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) -> r ) -> r
 taking n v f = let 
    selection = Unsized.take n $ fromSized 
