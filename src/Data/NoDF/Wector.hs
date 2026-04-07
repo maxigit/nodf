@@ -193,15 +193,30 @@ grouping v f =
             segmenting (windex order @> v) $ \seg ->
                        f (composeItems order seg)
 
-joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Unsized.Vector (Finite n)) -> Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
-joining v v' f = 
-   grouping v $ \grp -> case grp of 
-      (_ :: Wector n joined (Unsized.Vector (Finite n))) ->
+-- | To be used to combine left or right joins
+-- Technically we only use windex from grouping
+-- so instead of JoinSpine a Wector n joined a would work to rejoin
+-- However, we will lose the group information which can be used later
+-- Also a Wector doesn't carry the fact that the vector has been sorted and is unique
+data JoinSpine n joined a =
+       JoinSpine { jsSpine :: Vector joined a -- ^ sorted and unique vector
+                 , jsGrouping :: Wector n joined (Unsized.Vector (Finite n)) -- ^ the grouping
+                 }
+       deriving (Show, Eq)
+
+makingJoinSpine :: (KnownNat n, Ord a) => Vector n a -> (forall joined . KnownNat joined => JoinSpine n joined a -> r) -> r
+makingJoinSpine v f = 
+   grouping v $ \grp -> let uniqV = Unsized.head <$> witems grp @>$ v
+                        in f (JoinSpine uniqV grp)
+
+-- | left join to an existing join spine. 
+rejoin  :: forall a n m joined . (Ord a, KnownNat m, KnownNat joined) => JoinSpine n joined a -> Vector m a -> Wector n joined (Unsized.Vector (Finite m))
+rejoin spine v' = 
         grouping v' $ \grp' -> case grp' of 
           ( _ :: Wector n' grp' (Unsized.Vector (Finite n'))) -> 
              -- get a unique represent for each group
              -- we assume that each groups are not empty
-             let uniqV = Unsized.head <$> witems grp @>$ v 
+             let uniqV = jsSpine spine
                  uniqV' = Unsized.head <$> witems grp' @>$ v' 
                  -- foreach i in the left group we try to find the corresponding value 
                  -- in the right group and collect the index in grp'
@@ -239,8 +254,10 @@ joining v v' f =
                                 Nothing -> mempty
                                 Just gi' -> witems grp' `S.index` gi'
 
-             in f grp
-                  $ Wector (windex grp) (expand <$> ix'ac) -- join
+             in Wector (windex $ jsGrouping spine) (expand <$> ix'ac) -- join
+
+joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Unsized.Vector (Finite n)) -> Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
+joining v v' f = makingJoinSpine v $ \spine -> f (jsGrouping spine) (rejoin spine v')
 
 -- | Moving window
 moving :: KnownNat n => Int -> Wector n n (Unsized.Vector (Finite n))
