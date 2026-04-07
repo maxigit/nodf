@@ -33,6 +33,7 @@ flag library-only
 library
   exposed-modules:
       Data.NoDF
+      Data.NoDF.SUN
       Data.NoDF.Wector
       Main
   other-modules:
