@@ -17,6 +17,7 @@ import qualified Data.List as List
 import Data.Coerce (coerce, Coercible)
 -- import qualified Data.Vector.Algorithms.Intro as Algo
 import qualified Data.Vector.Algorithms.Tim as Algo
+import Data.NoDF.Fold1
 
 -- * Operations on permutation
 --
@@ -58,6 +59,8 @@ rmap grpv f b0m v =
               grpv
        S.freeze mv
   
+type Vector1  = Fold1 Unsized.Vector
+
 -- | A "double" vector with a shared spine
 data Wector n grp a =
             Wector { windex  :: Vector n (Finite grp)
@@ -183,19 +186,19 @@ orderingWith cmp f = let
                   S.imapM_ (\i' i -> MS.write mv i (Identity i') ) ix'
                   S.freeze mv
               in f $ Wector ix' items
-segmenting :: forall n a r . (KnownNat n, Eq a) => Vector n a -> (forall seg . KnownNat seg => Wector n seg (Unsized.Vector (Finite n)) -> r ) -> r
+segmenting :: forall n a r . (KnownNat n, Eq a) => Vector n a -> (forall seg . KnownNat seg => Wector n seg (Vector1 (Finite n)) -> r ) -> r
 segmenting v f = let
    groupsWithValue = Unsized.groupBy (\a b -> snd a == snd b) (fromSized $ S.indexed v)
-   ugroups = map (fmap fst) groupsWithValue  -- just keep the index
-   in withSizedList ugroups $ \(groups :: Vector seg (Unsized.Vector (Finite n))) -> let
+   ugroups = map (UnsafeFold1 . fmap fst) groupsWithValue  -- just keep the index
+   in withSizedList ugroups $ \(groups :: Vector seg (Vector1 (Finite n))) -> let
            gindex = runST $ do
                  mv <- MS.unsafeNew
-                 S.imapM_ (\gi (is :: Unsized.Vector (Finite n)) -> mapM_ (\i -> MS.write mv i gi ) is) groups
+                 S.imapM_ (\gi (is :: Vector1 (Finite n)) -> mapM_ (\i -> MS.write mv i gi ) is) groups
                  S.freeze mv
            
            in f $ Wector gindex groups
    
-grouping :: forall n a r . (KnownNat n, Ord a) => Vector n a -> (forall grp . KnownNat grp => Wector n grp (Unsized.Vector (Finite n)) -> r ) -> r
+grouping :: forall n a r . (KnownNat n, Ord a) => Vector n a -> (forall grp . KnownNat grp => Wector n grp (Vector1 (Finite n)) -> r ) -> r
 grouping v f = 
    -- TODO rewrite to allocate all slices as one vector then sliced
    -- segmenting do that, witems are slices of a main vector
@@ -217,18 +220,18 @@ data JoinSpine n joined a =
 
 makingJoinSpine :: (KnownNat n, Ord a) => Vector n a -> (forall joined . KnownNat joined => JoinSpine n joined a -> r) -> r
 makingJoinSpine v f = 
-   grouping v $ \grp -> let uniqV = Unsized.head <$> witems grp @>$ v
-                        in f (JoinSpine uniqV grp)
+   grouping v $ \grp -> let uniqV = head1 <$> witems grp @>$ v
+                        in f (JoinSpine uniqV $ unFold1 <$> grp)
 
 -- | left join to an existing join spine. 
 rejoin  :: forall a n m joined . (Ord a, KnownNat m, KnownNat joined) => JoinSpine n joined a -> Vector m a -> Wector n joined (Unsized.Vector (Finite m))
 rejoin spine v' = 
         grouping v' $ \grp' -> case grp' of 
-          ( _ :: Wector n' grp' (Unsized.Vector (Finite n'))) -> 
+          ( _ :: Wector n' grp' (Vector1 (Finite n'))) -> 
              -- get a unique represent for each group
              -- we assume that each groups are not empty
              let uniqV = jsSpine spine
-                 uniqV' = Unsized.head <$> witems grp' @>$ v' 
+                 uniqV' = head1 <$> witems grp' @>$ v' 
                  -- foreach i in the left group we try to find the corresponding value 
                  -- in the right group and collect the index in grp'
                  ix'ac :: Vector joined (Maybe (Finite grp'))
@@ -263,7 +266,7 @@ rejoin spine v' =
                  expand :: Maybe (Finite grp') -> Unsized.Vector (Finite m)
                  expand gi'm = case gi'm of 
                                 Nothing -> mempty
-                                Just gi' -> witems grp' `S.index` gi'
+                                Just gi' -> unFold1 (witems grp' `S.index` gi')
 
              in Wector (windex $ jsGrouping spine) (expand <$> ix'ac) -- join
 
@@ -271,11 +274,11 @@ joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vec
 joining v v' f = makingJoinSpine v $ \spine -> f (jsGrouping spine) (rejoin spine v')
 
 -- | Moving window
-moving :: KnownNat n => Int -> Wector n n (Unsized.Vector (Finite n))
+moving :: KnownNat n => Int -> Wector n n (Vector1 (Finite n))
 moving size = let
     u = S.fromSized $ S.generate id
     windex = S.generate id
-    witems = S.generate (\fi -> Unsized.drop (fromIntegral fi + 1 - size) $ Unsized.take  (fromIntegral fi + 1) u)
+    witems = S.generate (\fi -> UnsafeFold1 $ Unsized.drop (fromIntegral fi + 1 - size) $ Unsized.take  (fromIntegral fi + 1) u)
     in Wector windex witems
 
 to1 :: Foldable f => f a -> Maybe a
@@ -316,12 +319,12 @@ main = do
          print on_style
          mapM_ print $ S.zip sku $  wbroadcast on_style @=> style'shape -- shape_shape
          print " ---- SUM by STYLE ---- "
-         let qty_style = Unsized.sum <$> witems by_style @>$ qty
+         let qty_style = sum <$> witems by_style @>$ qty
          print qty_style
          let shape = wbroadcast on_style @=> shape_shape
          grouping shape $ \by_shape  ->  do
            print by_shape
-           let qty_shape = Unsized.sum <$> witems by_shape @>$ qty
+           let qty_shape = sum <$> witems by_shape @>$ qty
            print qty_shape
            mapM_ print $ S.zip4 sku
                                 (windex by_style @> qty_style)
@@ -329,11 +332,11 @@ main = do
                                 (windex by_shape @> qty_shape)
                                 
            print " ---- RUNNING ---- "
-           print $ rmap (witems by_shape) (S.postscanl' (+) 0)  Nothing qty 
+           print $ rmap (unFold1 <$> witems by_shape) (S.postscanl' (+) 0)  Nothing qty 
      print " --- Moving avegare -- "
      let ma = moving 2
      print $ witems ma @>$ qty
-     print $ Unsized.sum <$> witems ma @>$ qty
+     print $ sum <$> witems ma @>$ qty
      print " ==== Moving sorted === "
      ordering sku  $ \by_sku ->  do
          -- let mo = composeWith _ (moving 2) by_sku

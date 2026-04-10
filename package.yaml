@@ -5,12 +5,13 @@ version:             0.1.0.0
 homepage:            https://github.com/maxigit/nodf#readme
 license:             BSD-3-Clause
 category:            Statistics
+default-language:     GHC2024
 extra-source-files:
 - README.md
 - CHANGELOG.md
 
 dependencies:
-- base >= 4.7 && < 5
+- base >= 4.18 && < 5
 - vector-sized >= 1.6.1 && <2
 - vector >= 0.13.2.0 && < 1
 - finite-typelits >= 0.1.6 && <1
