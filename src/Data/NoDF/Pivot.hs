@@ -1,5 +1,5 @@
 {-# LANGUAGE BlockArguments, PatternSynonyms #-}
-module Data.NoDF.Melt where
+module Data.NoDF.Pivot where
 
 
 import Data.NoDF.Wector
@@ -64,6 +64,9 @@ pivoting keyv varnamev f =
         Wednesday : [5]
         Thursday  : [6]
      -}
+-- | same as pivoting but take an already made spine.
+-- This can be usefull if the spine is smaller than the spine which will 
+-- be generated from pivoting. In that case only the used row are kept.
 pivotWithSpine :: (Ord a, Ord name, KnownNat n, KnownNat joined) => JoinSpine n joined a -> Vector n name -> Map.Map name (Vector joined (V.Vector (Finite n))) 
 pivotWithSpine spine varnamev =  let
    indexv = S.generate id
