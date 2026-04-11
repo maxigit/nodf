@@ -34,7 +34,6 @@ library
   exposed-modules:
       Data.NoDF
       Data.NoDF.Fold1
-      Data.NoDF.SUN
       Data.NoDF.Wector
       Main
   other-modules:
