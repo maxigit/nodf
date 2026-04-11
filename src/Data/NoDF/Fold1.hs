@@ -52,7 +52,7 @@ mkFold1 xs = if null xs
              
 
 -- | Ascending 
-newtype Asc f a = UnsafeAsc { unsafeAsc :: f a }
+newtype Asc f a = UnsafeAsc { unAsc :: f a }
    deriving (Eq, Ord, Foldable)
    
 instance Show (f a) => Show (Asc f a) where
@@ -72,7 +72,7 @@ mkAsc xs = fmap (const (UnsafeAsc xs))
               
            
 -- | Strictly Ascending  or Ascending "Unique"
-newtype AscU f a = UnsafeAscU { unsafeAscU :: f a }
+newtype AscU f a = UnsafeAscU { unAscU :: f a }
    deriving (Eq, Ord, Foldable)
    
 instance Show (f a) => Show (AscU f a) where
