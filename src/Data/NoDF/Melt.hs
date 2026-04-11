@@ -53,7 +53,7 @@ We want a map
   
 -}
 
-unmelting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Wector n joined (V.Vector (Finite n))) -> r ) -> r
+unmelting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Wector joined joined (V.Vector (Finite n))) -> r ) -> r
 unmelting keyv varnamev f =  let
    indexv = S.generate id
    -- first we collect all unique keys throught the whole vector
@@ -73,10 +73,12 @@ unmelting keyv varnamev f =  let
          let key'n_byVar = witems byVarKey @>$ Z2 keyv indexv
              byVarKey = composeItems onVarKey byVarKey_
          in f ( jsGrouping spine)
-              $ Map.fromList [(varname, fmap (@> n_) joined)
+              $ Map.fromList [(varname, joined)
                              | (varname, Fold1 (SomeSized key'n)) <- F.toList $ Z2 (witems byVarKey @=> varnamev) key'n_byVar
                              , let Z2 key_ n_ = key'n
-                             , let joined = rejoin spine key_
+                             , let joinedN = rejoin spine key_
+                             , let joined = Wector (S.generate id)
+                                                   (fmap (@> n_) (witems joinedN))
                              ]
 
 
