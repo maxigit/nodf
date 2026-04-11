@@ -282,22 +282,6 @@ moving size = let
     witems = S.generate (\fi -> UnsafeFold1 $ Unsized.drop (fromIntegral fi + 1 - size) $ Unsized.take  (fromIntegral fi + 1) u)
     in Wector windex witems
 
-to1 :: Foldable f => f a -> Maybe a
-to1 l = case F.toList l of 
-          [a] -> Just a
-          _ -> Nothing
-
-toI :: Foldable f => f a -> Maybe (Identity a)
-toI l = case F.toList l of 
-          [a] -> Just (Identity a)
-          _ -> Nothing
-
-to01 :: Foldable f => f a -> Maybe (Maybe a)
-to01 l = case F.toList l of 
-          [] -> Just Nothing
-          [a] -> Just (Just a)
-          _ -> Nothing
-
 main :: IO ()
 main = do
   withSizedList [ ("Adam-Navy", "Adam", 2)
@@ -315,7 +299,7 @@ main = do
        let (style_shape, shape_shape) = S.unzip style'shape 
        
        joining style style_shape $ \by_style on_style_ -> do
-         let Just on_style = traverse toI on_style_
+         let Just on_style = traverse mkFold1 on_style_
          print " ------- BY SHAPE ------ "
          print on_style
          mapM_ print $ S.zip sku $  wbroadcast on_style @=> style'shape -- shape_shape
