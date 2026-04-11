@@ -10,12 +10,14 @@ import qualified Data.Vector.Sized as S
 import qualified Data.Vector as Unsized
 
 newtype Fold1 f a = UnsafeFold1 { unFold1 :: f a }
-  deriving (Show, Eq, Ord, Functor, Foldable, Traversable
+  deriving (Eq, Ord, Functor, Foldable, Traversable
            , Semigroup
            -- No Monoid instance because 'mempty' means empty 
            -- and fold1 means non empty
            , Num
            )
+instance Show (f a) => Show (Fold1 f a) where
+   show (Fold1 xs) = "F1:" <> show xs
 
 instance Applicative f => Applicative (Fold1 f) where
   pure = Fold1 . pure
@@ -50,8 +52,11 @@ mkFold1 xs = if null xs
              
 
 -- | Ascending 
-newtype Asc f a = UnsafeAsc (f a)
-   deriving (Show, Eq, Ord, Foldable)
+newtype Asc f a = UnsafeAsc { unsafeAsc :: f a }
+   deriving (Eq, Ord, Foldable)
+   
+instance Show (f a) => Show (Asc f a) where
+   show (Asc f) = "Asc:" <> show f
    
 {-# COMPLETE Asc #-}
 pattern Asc :: f a -> Asc f a
@@ -67,9 +72,12 @@ mkAsc xs = fmap (const (UnsafeAsc xs))
               
            
 -- | Strictly Ascending  or Ascending "Unique"
-newtype AscU f a = UnsafeAscU (f a)
-   deriving (Show, Eq, Ord, Foldable)
+newtype AscU f a = UnsafeAscU { unsafeAscU :: f a }
+   deriving (Eq, Ord, Foldable)
    
+instance Show (f a) => Show (AscU f a) where
+   show (AscU f) = "AscU:" <> show f
+
 {-# COMPLETE AscU #-}
 pattern AscU :: f a -> AscU f a
 pattern AscU f = UnsafeAscU f
