@@ -224,6 +224,11 @@ makingJoinSpine v f =
    grouping v $ \grp -> let uniqV = UnsafeAscU $ witems grp @=> v
                         in f (JoinSpine uniqV grp)
 
+mkSpine :: KnownNat joined => AscU (Vector joined) a -> JoinSpine joined joined a
+mkSpine uniq@(AscU v) = JoinSpine uniq (Wector ixs groups)
+   where ixs = S.generate id
+         groups = fmap (UnsafeFold1 . Unsized.singleton) ixs
+
 -- | left join to an existing join spine. 
 rejoin  :: forall a n m joined . (Ord a, KnownNat m, KnownNat joined) => JoinSpine n joined a -> Vector m a -> Wector n joined (Unsized.Vector (Finite m))
 rejoin spine v' = 

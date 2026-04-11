@@ -53,32 +53,36 @@ We want a map
   
 -}
 
-unmelting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Wector joined joined (V.Vector (Finite n))) -> r ) -> r
-unmelting keyv varnamev f =  let
-   indexv = S.generate id
+pivoting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Vector joined (V.Vector (Finite n))) -> r ) -> r
+pivoting keyv varnamev f =  
    -- first we collect all unique keys throught the whole vector
-   in makingJoinSpine keyv \spine ->
+   makingJoinSpine keyv \spine -> f (jsGrouping spine)
+                                    (pivotWithSpine spine varnamev)
      {- the previous example 
         Monday    : [1,2]
         Tuesday   : [3,4]
         Wednesday : [5]
         Thursday  : [6]
      -}
+pivotWithSpine :: (Ord a, Ord name, KnownNat n, KnownNat joined) => JoinSpine n joined a -> Vector n name -> Map.Map name (Vector joined (V.Vector (Finite n))) 
+pivotWithSpine spine varnamev =  let
+   indexv = S.generate id
+   keyv = windex (jsGrouping spine) @> (unAscU $ jsSpine spine)
+   -- first we collect all unique keys throught the whole vector
      -- we then group by name then key so it
      -- could be segmented by var into ascending keys ready to be joined with the spine
      -- We are essentialy doing group by (ordering + segmenting) but sorting on two vector
      -- instead of one
-     ordering (Z2 varnamev keyv) \onVarKey -> 
+   in ordering (Z2 varnamev keyv) \onVarKey -> 
        segmenting (windex onVarKey @> varnamev) \byVarKey_ ->
          let key'n_byVar = witems byVarKey @>$ Z2 keyv indexv
              byVarKey = composeItems onVarKey byVarKey_
-         in f ( jsGrouping spine)
-              $ Map.fromList [(varname, joined)
+         in -- f ( jsGrouping spine)
+              Map.fromList [(varname, joined)
                              | (varname, Fold1 (SomeSized key'n)) <- F.toList $ Z2 (witems byVarKey @=> varnamev) key'n_byVar
                              , let Z2 key_ n_ = key'n
                              , let joinedN = rejoin spine key_
-                             , let joined = Wector (S.generate id)
-                                                   (fmap (@> n_) (witems joinedN))
+                             , let joined = (fmap (@> n_) (witems joinedN))
                              ]
 
 
