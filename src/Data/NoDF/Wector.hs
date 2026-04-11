@@ -13,6 +13,7 @@ import Control.Monad.ST
 import Data.Functor.Identity
 
 import qualified Data.Foldable as F
+import qualified Data.Foldable1 as F1
 import qualified Data.List as List
 import Data.Coerce (coerce, Coercible)
 -- import qualified Data.Vector.Algorithms.Intro as Algo
@@ -35,8 +36,8 @@ p @>= v = fmap ((index v) =<<) p
 p @>~ v = sequence <$> p @>$ v
 
 
-(@=>) :: Vector n (Identity (Finite m)) -> Vector m a -> Vector n a
-p @=> v = coerceV p @> v
+(@=>) :: F1.Foldable1 f1 => Vector n (f1 (Finite m)) -> Vector m a -> Vector n a
+p @=> v = (head1 <$> p) @> v
 
 coerceV :: Coercible a b =>  Vector n a -> Vector n b
 coerceV = S.withVectorUnsafe coerce
@@ -213,15 +214,15 @@ grouping v f =
 -- However, we will lose the group information which can be used later
 -- Also a Wector doesn't carry the fact that the vector has been sorted and is unique
 data JoinSpine n joined a =
-       JoinSpine { jsSpine :: Vector joined a -- ^ sorted and unique vector
-                 , jsGrouping :: Wector n joined (Unsized.Vector (Finite n)) -- ^ the grouping
+       JoinSpine { jsSpine :: AscU (Vector joined) a -- ^ sorted and unique vector
+                 , jsGrouping :: Wector n joined (Vector1 (Finite n)) -- ^ the grouping
                  }
        deriving (Show, Eq)
 
 makingJoinSpine :: (KnownNat n, Ord a) => Vector n a -> (forall joined . KnownNat joined => JoinSpine n joined a -> r) -> r
 makingJoinSpine v f = 
-   grouping v $ \grp -> let uniqV = head1 <$> witems grp @>$ v
-                        in f (JoinSpine uniqV $ unFold1 <$> grp)
+   grouping v $ \grp -> let uniqV = UnsafeAscU $ witems grp @=> v
+                        in f (JoinSpine uniqV grp)
 
 -- | left join to an existing join spine. 
 rejoin  :: forall a n m joined . (Ord a, KnownNat m, KnownNat joined) => JoinSpine n joined a -> Vector m a -> Wector n joined (Unsized.Vector (Finite m))
@@ -230,8 +231,8 @@ rejoin spine v' =
           ( _ :: Wector n' grp' (Vector1 (Finite n'))) -> 
              -- get a unique represent for each group
              -- we assume that each groups are not empty
-             let uniqV = jsSpine spine
-                 uniqV' = head1 <$> witems grp' @>$ v' 
+             let AscU uniqV = jsSpine spine
+                 uniqV' = witems grp' @=> v' 
                  -- foreach i in the left group we try to find the corresponding value 
                  -- in the right group and collect the index in grp'
                  ix'ac :: Vector joined (Maybe (Finite grp'))
@@ -270,7 +271,7 @@ rejoin spine v' =
 
              in Wector (windex $ jsGrouping spine) (expand <$> ix'ac) -- join
 
-joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Unsized.Vector (Finite n)) -> Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
+joining :: forall n m a r . (KnownNat n, KnownNat m, Ord a) => Vector n a -> Vector m a -> (forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Wector n joined (Unsized.Vector (Finite m)) -> r ) -> r
 joining v v' f = makingJoinSpine v $ \spine -> f (jsGrouping spine) (rejoin spine v')
 
 -- | Moving window
