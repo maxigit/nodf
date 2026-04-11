@@ -16,6 +16,7 @@ dependencies:
 - vector >= 0.13.2.0 && < 1
 - finite-typelits >= 0.1.6 && <1
 - vector-algorithms >= 0.9.1 && <1
+- containers
 
 ghc-options:
 - -Wall

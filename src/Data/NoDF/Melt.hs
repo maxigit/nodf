@@ -1,0 +1,84 @@
+{-# LANGUAGE BlockArguments, PatternSynonyms #-}
+module Data.NoDF.Melt where
+
+
+import Data.NoDF.Wector
+import Data.NoDF.Util
+import Data.NoDF.Fold1
+import Data.Vector qualified as V
+import Data.Vector.Sized qualified as S
+import Data.Vector.Sized (Vector, pattern SomeSized, fromSized) --  withSized, pattern SomeSized, Vector(..))
+import Data.Finite
+import qualified Data.Foldable as F
+import qualified Data.Map as Map
+import GHC.TypeNats --  (Nat, KnownNat)
+
+
+
+{-| Unmelt a "table" given some key and var name. We don't need the variable value
+   as we are only interested in the indices in the original table
+   For example given
+
+      | key     | var      |  value | ix
+      Monday    | Patient  | 65     | 1
+      Monday    | Recovery | 50     | 2
+      Tuesday   | Patient  | 68     | 3
+      Tuesday   | Recovery | 45     | 4
+      Wednesday | Patient  | 70     | 5
+      Thursday  | Recovery | 55     | 6
+
+We want a map
+
+     Patient =>  Monday    | 1 (65)
+                 Tuesday   | 3
+                 Wednesday | 5
+                 Thursday  | Nothing
+     Recovery => Monday    | 2 
+                 Tuesday   | 4
+                 Wednesday | Nothing
+                 Thursday  | 6
+                 
+     and a list of keys Monday, Tuesday, Wednesday
+     which could be  a grouping 
+        Monday    : [1,2]
+        Tuesday   : [3,4]
+        Wednesday : [5]
+        Thursday  : [6]
+        
+        
+     or the spine
+
+
+     
+  
+-}
+
+unmelting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Wector n joined (V.Vector (Finite n))) -> r ) -> r
+unmelting keyv varnamev f =  let
+   indexv = S.generate id
+   -- first we collect all unique keys throught the whole vector
+   in makingJoinSpine keyv \spine ->
+     {- the previous example 
+        Monday    : [1,2]
+        Tuesday   : [3,4]
+        Wednesday : [5]
+        Thursday  : [6]
+     -}
+     -- we then group by name then key so it
+     -- could be segmented by var into ascending keys ready to be joined with the spine
+     -- We are essentialy doing group by (ordering + segmenting) but sorting on two vector
+     -- instead of one
+     ordering (Z2 varnamev keyv) \onVarKey -> 
+       segmenting (windex onVarKey @> varnamev) \byVarKey_ ->
+         let key'n_byVar = witems byVarKey @>$ Z2 keyv indexv
+             byVarKey = composeItems onVarKey byVarKey_
+         in f ( jsGrouping spine)
+              $ Map.fromList [(varname, fmap (@> n_) joined)
+                             | (varname, Fold1 (SomeSized key'n)) <- F.toList $ Z2 (witems byVarKey @=> varnamev) key'n_byVar
+                             , let Z2 key_ n_ = key'n
+                             , let joined = rejoin spine key_
+                             ]
+
+
+
+         

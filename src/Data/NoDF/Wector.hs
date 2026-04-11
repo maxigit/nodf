@@ -23,7 +23,7 @@ import Data.NoDF.Fold1
 -- * Operations on permutation
 --
 infixl 5 @>, @>$, @>=, @>~, @=>
-(@>) :: Vector n (Finite m) -> Vector m a -> Vector n a
+(@>) :: Functor f => f(Finite m) -> Vector m a -> f a
 p @> v = fmap (index v) p
 
 (@>$) :: Functor f => Vector n (f (Finite m)) -> Vector m a -> Vector n (f a)
