@@ -143,8 +143,12 @@ filtering keep v f = let
 
 taking :: forall n a r . KnownNat n => Int -> Vector n a -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) -> r ) -> r
 taking n v f = let 
-   selection = Unsized.take n $ fromSized 
-                              $ S.generate id
+   take = case n of 
+               _ | n > 0 -> Unsized.take n
+               _ | n == 0 -> id
+               _ | n < 0 -> Unsized.drop (S.length v + n)
+   selection = take $ fromSized 
+                    $ S.generate id
    in case selection of
         SomeSized sel -> let 
            back = runST $ do
