@@ -112,6 +112,8 @@ composeItems :: Functor f => (Wector m n (Identity (Finite m))) -> (Wector m grp
 composeItems a b = Wector (witems a @=> windex b)
                           ( witems b @>$ windex a)
 
+ab >.< cb = \f -> (ab (\wab -> cb (\wcb -> f $ composeItems wab wcb)))
+
 selecting ::  forall n r . KnownNat n => Vector n Bool -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) ->  r ) -> r
 selecting v f = let 
    selection = Unsized.filter (\fi -> v `index` fi )

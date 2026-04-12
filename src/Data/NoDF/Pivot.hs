@@ -57,7 +57,7 @@ pivoting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> 
 pivoting keyv varnamev f =  
    -- first we collect all unique keys throught the whole vector
    makingJoinSpine keyv \spine -> f (jsGrouping spine)
-                                    (pivotWithSpine spine varnamev)
+                                    (pivotWithSpine spine keyv varnamev)
      {- the previous example 
         Monday    : [1,2]
         Tuesday   : [3,4]
@@ -67,10 +67,9 @@ pivoting keyv varnamev f =
 -- | same as pivoting but take an already made spine.
 -- This can be usefull if the spine is smaller than the spine which will 
 -- be generated from pivoting. In that case only the used row are kept.
-pivotWithSpine :: (Ord a, Ord name, KnownNat n, KnownNat joined) => JoinSpine n joined a -> Vector n name -> Map.Map name (Vector joined (V.Vector (Finite n))) 
-pivotWithSpine spine varnamev =  let
+pivotWithSpine :: (Ord key, Ord name, KnownNat n, KnownNat joined) => JoinSpine m joined key -> Vector n key -> Vector n name -> Map.Map name (Vector joined (V.Vector (Finite n))) 
+pivotWithSpine spine keyv varnamev =  let
    indexv = S.generate id
-   keyv = windex (jsGrouping spine) @> (unAscU $ jsSpine spine)
    -- first we collect all unique keys throught the whole vector
      -- we then group by name then key so it
      -- could be segmented by var into ascending keys ready to be joined with the spine
