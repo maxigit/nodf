@@ -8,6 +8,7 @@ import qualified Data.Foldable as F
 import qualified Data.Foldable1 as F1
 import qualified Data.Vector.Sized as S
 import qualified Data.Vector as Unsized
+import Data.Functor.Identity
 
 newtype Fold1 f a = UnsafeFold1 { unFold1 :: f a }
   deriving (Eq, Ord, Functor, Foldable, Traversable
@@ -100,3 +101,12 @@ pattern Asc1 f = Asc (Fold1 f)
   
 head1 :: F1.Foldable1 f => f a -> a
 head1 = F1.head
+
+
+headm :: Foldable f => f a -> Maybe a
+headm f = case F.toList f of 
+            [] -> Nothing
+            a:_ -> Just a
+            
+headi :: F1.Foldable1 f => f a -> Identity a
+headi = Identity . F1.head

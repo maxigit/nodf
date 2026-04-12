@@ -5,6 +5,8 @@ where
 
 import qualified Data.Vector.Sized as S
 import Data.Vector.Sized (Vector)
+import Data.Functor.Identity
+import qualified Data.Foldable as F
 
 {-# COMPLETE Z2, Z3, Z4, Z5, Z6 #-}
 pattern Z2 :: Vector n a -> Vector n b -> Vector n (a,b)
@@ -22,4 +24,19 @@ pattern Z5 a b c d e <- (S.unzip5 -> (a, b, c, d, e)) where
 pattern Z6 :: Vector n a -> Vector n b -> Vector n c -> Vector n d -> Vector n e -> Vector n f -> Vector n (a,b,c,d,e,f)
 pattern Z6 a b c d e f <- (S.unzip6 -> (a, b, c, d, e, f)) where
    Z6 a b c d e f = S.zip6 a b c d e f
+
+
+-- Similar to mkFold1 and companie
+
+mkMaybe :: Foldable f => f a -> Maybe (Maybe a)
+mkMaybe f = case F.toList f of
+              [] -> Just Nothing
+              [a] -> Just (Just a)
+              _ -> Nothing
+              
+mkIdentity :: Foldable f => f a -> Maybe (Identity a)
+mkIdentity f = case F.toList f of
+                [a] -> Just (Identity a)
+                _ -> Nothing
+                
 
