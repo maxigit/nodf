@@ -37,6 +37,7 @@ library
       Data.NoDF.Pivot
       Data.NoDF.Util
       Data.NoDF.Wector
+      Data.NoDF.Operators
       Main
   other-modules:
       Paths_nodf
