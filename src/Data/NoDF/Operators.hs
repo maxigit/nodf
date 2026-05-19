@@ -1,12 +1,14 @@
 module Data.NoDF.Operators (
 module Export
+, module Data.NoDF.Operators
 )
 where
 
 import Data.NoDF.Wector as Export ((@>), (@>$), (@>=), (@>~), (@=>), (>.>), (>.<))
 import Data.NoDF.Wector
 
-(Wector ix _) @_> v  = ix @> v
-(Wector _ items) _@> v  = ix @> v
+(Wector ix _) @~> v  = ix @> v
+(Wector _ items) ~@> v  = items @> v
+(Wector _ items) ~@>$ v  = items @>$ v
 
-(W x items) @@>$ v = x @> items @>$ v
+(Wector x items) @@>$ v = x @> items @>$ v
