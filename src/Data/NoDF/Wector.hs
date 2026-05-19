@@ -114,7 +114,7 @@ composeItems a b = Wector (witems a @=> windex b)
 
 ab >.< cb = \f -> (ab (\wab -> cb (\wcb -> f $ composeItems wab wcb)))
 
-selecting ::  forall n r . KnownNat n => Vector n Bool -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) ->  r ) -> r
+selecting ::  forall n r . KnownNat n => Vector n Bool -> (forall selected . KnownNat selected => Wector selected n (Maybe (Finite selected)) ->  r ) -> r
 selecting v f = let 
    selection = Unsized.filter (\fi -> v `index` fi )
                                                               $ fromSized 
@@ -128,7 +128,7 @@ selecting v f = let
            in f $ Wector sel back
 
 -- | specialized version of selecting which doesn't create an intermedaiat
-filtering :: forall a n r . KnownNat n => (a -> Bool) -> Vector n a -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) -> r ) -> r
+filtering :: forall a n r . KnownNat n => (a -> Bool) -> Vector n a -> (forall filtered . KnownNat filtered => Wector filtered n (Maybe (Finite filtered)) -> r ) -> r
 filtering keep v f = let
    selection = Unsized.filter (\fi -> keep (v `index` fi) )
                                                               $ fromSized 
@@ -141,7 +141,7 @@ filtering keep v f = let
                         S.freeze mv
            in f $ Wector sel back
 
-taking :: forall n a r . KnownNat n => Int -> Vector n a -> (forall s . KnownNat s => Wector s n (Maybe (Finite s)) -> r ) -> r
+taking :: forall n a r . KnownNat n => Int -> Vector n a -> (forall taken . KnownNat taken => Wector taken n (Maybe (Finite taken)) -> r ) -> r
 taking n v f = let 
    take = case n of 
                _ | n > 0 -> Unsized.take n
@@ -157,6 +157,17 @@ taking n v f = let
                         S.freeze mv
            in f $ Wector sel back
 
+dropping :: forall n a r . KnownNat n => Int -> Vector n a -> (forall dropped . KnownNat dropped => Wector dropped n (Maybe (Finite dropped)) -> r) -> r
+dropping n = selectingWithMaybe (Unsized.drop n)
+
+
+droppingWhile :: forall n a r . KnownNat n => (a -> Bool) -> Vector n a -> (forall dropped . KnownNat dropped => Wector dropped n (Maybe (Finite dropped)) -> r) -> r
+droppingWhile p v = selectingWithMaybe (Unsized.dropWhile pi) v where
+    pi i = p (index v i )
+
+takingWhile :: forall n a r . KnownNat n => (a -> Bool) -> Vector n a -> (forall taken . KnownNat taken => Wector taken n (Maybe (Finite taken)) -> r) -> r
+takingWhile p v = selectingWithMaybe (Unsized.takeWhile pi) v where
+    pi i = p (index v i )
 
 -- | If subset should return Maybe insteaf of List
 selectingWith  :: forall n a r . KnownNat n => (Unsized.Vector (Finite n) -> Unsized.Vector (Finite n)) -> Vector n a -> (forall sel . KnownNat sel => Wector sel n [Finite sel] -> r) -> r
@@ -171,6 +182,18 @@ selectingWith select v f = let
                         S.freeze mv
            in f $ Wector sel back
 
+-- | Like selectingWith but assume that element are not duplicated. Therefore, we can use a Maybe (present or not) instead of a list
+selectingWithMaybe  :: forall n a r . KnownNat n => (Unsized.Vector (Finite n) -> Unsized.Vector (Finite n)) -> Vector n a -> (forall sel . KnownNat sel => Wector sel n (Maybe (Finite sel)) -> r) -> r
+selectingWithMaybe select v f = let
+   selection = select $ fromSized 
+                 $ S.generate id
+   in case selection of
+        SomeSized sel -> let 
+           back = runST $ do
+                        mv <- MS.replicate Nothing
+                        S.imapM_ (\is i -> MS.write mv i (Just is)) $ sel
+                        S.freeze mv
+           in f $ Wector sel back
 
 ordering :: forall n a r . (KnownNat n, Ord a) => Vector n a -> (forall sorted . KnownNat sorted => Wector sorted n (Identity (Finite sorted )) -> r ) -> r
 ordering v f = let
