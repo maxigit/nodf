@@ -1,12 +1,18 @@
 {-# LANGUAGE ViewPatterns, PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
 module Data.NoDF.Patterns where
 
-import Data.NoDF.Wector 
+import Data.NoDF.Wector  hiding(main)
 import Data.Finite
+import GHC.TypeNats --  (Nat, KnownNat)
 import Data.Functor.Identity
 
-data W_N_ n f = forall s .  W_N_ (Wector s n (f (Finite s)))
-data WN_ n f = forall grp .  WN_ (Wector n grp (f (Finite n)))
+-- For test, to remove
+import qualified Data.Vector.Sized as S
+import Data.Vector.Sized(Vector, index, pattern SomeSized, fromSized, withSizedList, imap)
+
+data W_N_ n f = forall s .  KnownNat s => W_N_ (Wector s n (f (Finite s)))
+data WN_ n f = forall grp . WN_ (Wector n grp (f (Finite n)))
 
 
 selectW v = selecting v W_N_
@@ -36,4 +42,26 @@ pattern SegmentW wector <- (segmentW  -> WN_ wector)
 
 groupW v = grouping v WN_
 pattern GroupW wector <- (groupW -> WN_ wector)
--- * 
+
+pattern WSomeIx wector <- ( ($ W_N_) -> W_N_ wector)
+pattern WSomeItems wector <- ( ($WN_ ) -> W_N_ wector)
+
+--- * Test
+main :: IO ()
+main = do
+  withSizedList [ ("Adam-Navy", "Adam", 2)
+                , ("Adele-BLk", "Adele", 3)
+                , ("Adam-Black", "Adam", 10)
+                , ("Fiddle-Navy", "Fiddle", 64)
+                , ("Fiddle-Black", "Fiddle", 17)
+                , ("Fiddle-Blue", "Fiddle", 23)
+                ] $ \sales -> do
+    let (n_sku, n_style, n_qty) = S.unzip3 sales
+    case () of 
+        _  | WSomeIx qNnQ <- filtering odd n_qty
+           , WSomeItems qSsQQ <- segmenting $ windex qNnQ @> n_style
+           , let qN = walues qSsQQ @>$ windex qNnQ
+           -> do 
+               mapM print $ walues qSsQQ @>$ (windex qNnQ @> n_qty )
+               mapM print $ S.zip (qN @=> n_style) (qN @>$ n_qty)
+               mapM_ print $ windex qNnQ @> sales

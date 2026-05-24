@@ -38,6 +38,7 @@ library
       Data.NoDF.Util
       Data.NoDF.Wector
       Data.NoDF.Operators
+      Data.NoDF.Patterns
       Main
   other-modules:
       Paths_nodf

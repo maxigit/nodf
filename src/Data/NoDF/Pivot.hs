@@ -77,14 +77,14 @@ pivotWithSpine spine keyv varnamev =  let
      -- instead of one
    in ordering (Z2 varnamev keyv) \onVarKey -> 
        segmenting (windex onVarKey @> varnamev) \byVarKey_ ->
-         let key'n_byVar = witems byVarKey @>$ Z2 keyv indexv
+         let key'n_byVar = walues byVarKey @>$ Z2 keyv indexv
              byVarKey = composeItems onVarKey byVarKey_
          in -- f ( jsGrouping spine)
               Map.fromList [(varname, joined)
-                             | (varname, Fold1 (SomeSized key'n)) <- F.toList $ Z2 (witems byVarKey @=> varnamev) key'n_byVar
+                             | (varname, Fold1 (SomeSized key'n)) <- F.toList $ Z2 (walues byVarKey @=> varnamev) key'n_byVar
                              , let Z2 key_ n_ = key'n
                              , let joinedN = rejoin spine key_
-                             , let joined = (fmap (@> n_) (witems joinedN))
+                             , let joined = (fmap (@> n_) (walues joinedN))
                              ]
 
 
