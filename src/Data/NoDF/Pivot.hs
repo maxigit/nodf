@@ -27,7 +27,8 @@ import GHC.TypeNats --  (Nat, KnownNat)
       Wednesday | Patient  | 70     | 5
       Thursday  | Recovery | 55     | 6
 
-We want a map
+We want a map , for each var of columns (same length )
+   The result should be a Maybe (Finite n), but only if we are sure that there are not duplicate.
 
      Patient =>  Monday    | 1 (65)
                  Tuesday   | 3
@@ -53,11 +54,21 @@ We want a map
   
 -}
 
-pivoting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Vector joined (V.Vector (Finite n))) -> r ) -> r
-pivoting keyv varnamev f =  
-   -- first we collect all unique keys throught the whole vector
-   makingJoinSpine keyv \spine -> f (jsGrouping spine)
-                                    (pivotWithSpine spine keyv varnamev)
+data Pivot name x v__joined = Pivot { pvKeys :: WectorFF Vector1 x v__joined x
+                                    , pvColumnMap :: Map.Map name (Vector v__joined (V.Vector (Finite x)))
+                                    }
+                               deriving (Show, Eq)
+data PivotV name x = forall v . PivotV (Pivot name x v)
+pivotV :: (Ord name, Ord key, KnownNat x) => Vector n key -> Vector n name -> PivotV name x
+pivotV keyv varnamev | JoinSpineV spine <- makeJoinSpineV keyv
+                     = PivotV $ Pivot (jsGrouping spine)
+                                      (pivotWithSpine spine keyv varnamev)
+
+-- pivoting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Vector joined (V.Vector (Finite n))) -> r ) -> r
+-- pivoting keyv varnamev f =  
+--    -- first we collect all unique keys throught the whole vector
+--    makingJoinSpine keyv \spine -> f (jsGrouping spine)
+--                                     (pivotWithSpine spine keyv varnamev)
      {- the previous example 
         Monday    : [1,2]
         Tuesday   : [3,4]
@@ -68,17 +79,18 @@ pivoting keyv varnamev f =
 -- This can be usefull if the spine is smaller than the spine which will 
 -- be generated from pivoting. In that case only the used row are kept.
 pivotWithSpine :: (Ord key, Ord name, KnownNat n, KnownNat joined) => JoinSpine m joined key -> Vector n key -> Vector n name -> Map.Map name (Vector joined (V.Vector (Finite n))) 
-pivotWithSpine spine keyv varnamev =  let
-   indexv = S.generate id
+pivotWithSpine spine keyv varnamev 
+   | indexv <-  S.generate id
    -- first we collect all unique keys throught the whole vector
      -- we then group by name then key so it
      -- could be segmented by var into ascending keys ready to be joined with the spine
      -- We are essentialy doing group by (ordering + segmenting) but sorting on two vector
      -- instead of one
-   in ordering (Z2 varnamev keyv) \onVarKey -> 
-       segmenting (windex onVarKey @> varnamev) \byVarKey_ ->
+   , Wix onVarKey <- orderX (Z2 varnamev keyv)
+   , Wal byVarKey_ <- segmentV (windex onVarKey @> varnamev)
+   =
          let key'n_byVar = walues byVarKey @>$ Z2 keyv indexv
-             byVarKey = composeItems onVarKey byVarKey_
+             byVarKey = crossCompose onVarKey byVarKey_
          in -- f ( jsGrouping spine)
               Map.fromList [(varname, joined)
                              | (varname, Fold1 (SomeSized key'n)) <- F.toList $ Z2 (walues byVarKey @=> varnamev) key'n_byVar

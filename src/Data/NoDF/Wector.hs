@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveTraversable, PatternSynonyms #-}
-{-# LANGUAGE ExistentialQuantification, RankNTypes, DataKinds, KindSignatures, ScopedTypeVariables , TypeOperators #-}
+{-# LANGUAGE ExistentialQuantification, RankNTypes, DataKinds, KindSignatures, TypeAbstractions , TypeOperators #-}
 module Data.NoDF.Wector 
 ( module Data.NoDF.Wector
 )
@@ -74,6 +74,14 @@ data Wector x v a =
 
 type WectorFF f x v y = Wector x v (f (Finite y))
      
+-- | Self Wector with Existential index
+data Wix f v = forall x . KnownNat x => Wix (WectorFF f x v x)
+-- | Self Wector with Existential values
+data Wal f x = forall v . KnownNat v => Wal (WectorFF f x v x)
+
+pattern Wixor x v = Wix (Wector x v)
+pattern Walor x v = Wal (Wector x v)
+
 wbroadcast :: Wector x v a -> Vector x a
 wbroadcast (Wector xV va) = xV @> va
 
@@ -105,6 +113,10 @@ composing, (>.>) :: (Monad f, av__m ~ bx__m) => ((WectorFF f ax__n av__m ax__n -
 composing nMmNN_f mOoMM_f f = nMmNN_f (\nMmNN  -> mOoMM_f (\mOoMM -> f $ composeW nMmNN mOoMM ))
 cab >.> ca = composing cab ca
 
+compX :: Monad f => Wix f v -> WectorFF f v u v -> Wix f u 
+compX (Wix a) b = Wix $ composeW a b
+compL :: Monad f => WectorFF f x v x -> Wal f v -> Wal f x
+compL a (Wal b) = Wal $ composeW a b
 -- | op can by @>= or @>~ or @>$
 -- composeWith :: Monad f => WectorFF f a ab a -> WectorFF f ab abcd ab -> WectorFF f a abcd a
 {- composeWith :: (Monad f, av__m ~ bx__m)
@@ -162,8 +174,8 @@ crossing, (>.<) :: Functor f
 crossing nMmNN_f nGgNN_f f = nMmNN_f (\nMmNN -> nGgNN_f (\nGgNN -> f $ crossCompose nMmNN nGgNN))
 ab >.< cb = crossing ab cb
 
-selecting ::  forall v__n r . KnownNat v__n => Vector v__n Bool -> (forall x__selected . KnownNat x__selected => WectorFF Maybe x__selected v__n x__selected ->  r ) -> r
-selecting v f = let 
+selectX :: KnownNat v => Vector v Bool -> Wix Maybe v
+selectX v = let 
    selection = Unsized.filter (\fi -> v `index` fi )
                             $ fromSized 
                             $ S.generate id
@@ -173,11 +185,11 @@ selecting v f = let
                         mv <- MS.replicate Nothing
                         S.imapM_ (\is i -> MS.write mv i (Just is)) sel
                         S.freeze mv
-           in f $ Wector sel back
+           in Wix $ Wector sel back
 
 -- | specialized version of selecting which doesn't create an intermedaiat
-filtering :: forall a v__n r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__filtered . KnownNat x__filtered => WectorFF Maybe x__filtered v__n x__filtered -> r ) -> r
-filtering keep v f = let
+filterX :: forall a v . KnownNat v => (a -> Bool) -> Vector v a -> Wix Maybe v 
+filterX keep v = let
    selection = Unsized.filter (\fi -> keep (v `index` fi) )
                                                               $ fromSized 
                                                               $ S.generate id
@@ -187,10 +199,10 @@ filtering keep v f = let
                         mv <- MS.replicate Nothing
                         S.imapM_ (\is i -> MS.write mv i (Just is)) sel
                         S.freeze mv
-           in f $ Wector sel back
+           in Wix $ Wector sel back
 
-taking :: forall v__n a r . KnownNat v__n => Int -> Vector v__n a -> (forall x__taken . KnownNat x__taken => WectorFF Maybe x__taken v__n x__taken -> r ) -> r
-taking n v f = let 
+takeX :: KnownNat v => Int -> Vector v a -> Wix Maybe v
+takeX n v = let 
    take_ = case n of 
                _ | n > 0 -> Unsized.take n
                _ | n == 0 -> id
@@ -203,23 +215,25 @@ taking n v f = let
                         mv <- MS.replicate Nothing
                         S.imapM_ (\is i -> MS.write mv i (Just is)) sel
                         S.freeze mv
-           in f $ Wector sel back
+           in Wix $ Wector sel back
 
-dropping :: forall v__n a r . KnownNat v__n => Int -> Vector v__n a -> (forall x__dropped . KnownNat x__dropped => WectorFF Maybe x__dropped v__n x__dropped -> r) -> r
-dropping n = selectingWithMaybe (Unsized.drop n)
+dropX :: KnownNat v => Int -> Vector v a -> Wix Maybe v
+dropX n = selectWithMaybeX (Unsized.drop n)
 
 
-droppingWhile :: forall v__n a r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__dropped . KnownNat x__dropped => WectorFF Maybe x__dropped v__n x__dropped -> r) -> r
-droppingWhile p v = selectingWithMaybe (Unsized.dropWhile pi_) v where
+-- droppingWhile :: forall v__n a r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__dropped . KnownNat x__dropped => WectorFF Maybe x__dropped v__n x__dropped -> r) -> r
+dropWhileX :: KnownNat v => (a -> Bool) -> Vector v a -> Wix Maybe v
+dropWhileX p v = selectWithMaybeX (Unsized.dropWhile pi_) v where
     pi_ i = p (index v i )
 
-takingWhile :: forall v__n a r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__taken . KnownNat x__taken => WectorFF Maybe x__taken v__n x__taken -> r) -> r
-takingWhile p v = selectingWithMaybe (Unsized.takeWhile pi_) v where
+takeWhileX :: KnownNat v => (a -> Bool) -> Vector v a -> Wix Maybe v
+takeWhileX p v = selectWithMaybeX (Unsized.takeWhile pi_) v where
     pi_ i = p (index v i )
 
 -- | If subset should return Maybe insteaf of List
-selectingWith  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => WectorFF []  x__selected v__n x__selected -> r) -> r
-selectingWith select _proxy_v f = let
+-- selectingWith  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => WectorFF []  x__selected v__n x__selected -> r) -> r
+selectWithX  :: KnownNat v => (Unsized.Vector (Finite v) -> Unsized.Vector (Finite v)) -> Vector v a -> Wix [] v
+selectWithX select _proxy_v = let
    selection = select $ fromSized 
                  $ S.generate id
    in case selection of
@@ -228,11 +242,12 @@ selectingWith select _proxy_v f = let
                         mv <- MS.replicate []
                         S.imapM_ (\is i -> MS.modify mv (is:) i) $ sel
                         S.freeze mv
-           in f $ Wector sel back
+           in Wix $ Wector sel back
 
 -- | Like selectingWith but assume that element are not duplicated. Therefore, we can use a Maybe (present or not) instead of a list
-selectingWithMaybe  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => WectorFF Maybe x__selected v__n x__selected -> r) -> r
-selectingWithMaybe select _proxy_v f = let
+-- selectingWithMaybe  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => WectorFF Maybe x__selected v__n x__selected -> r) -> r
+selectWithMaybeX :: KnownNat v => (Unsized.Vector (Finite v) -> Unsized.Vector (Finite v)) -> Vector v a -> Wix Maybe v 
+selectWithMaybeX select _proxy_v = let
    selection = select $ fromSized 
                  $ S.generate id
    in case selection of
@@ -241,32 +256,37 @@ selectingWithMaybe select _proxy_v f = let
                         mv <- MS.replicate Nothing
                         S.imapM_ (\is i -> MS.write mv i (Just is)) $ sel
                         S.freeze mv
-           in f $ Wector sel back
+           in Wix $ Wector sel back
 
-ordering :: forall v__n a r . (KnownNat v__n, Ord a) => Vector v__n a -> (forall x__sorted . KnownNat x__sorted => Wector x__sorted v__n (Identity (Finite x__sorted )) -> r ) -> r
-ordering v f = let
-  ix = S.generate id :: Vector v__n (Finite v__n)
+orderX :: (KnownNat v, Ord a) => Vector v a -> Wix Identity v
+orderX @v v = let
+  ix = S.generate id :: Vector v (Finite v)
   in case Unsized.modify (Algo.sortBy (\i j -> compare (v `index` i) (v `index` j))) (fromSized ix) of
-         SomeSized ( ix' :: KnownNat x__sorted => Vector x__sorted (Finite v__n)) -> let
+         SomeSized ( ix' :: KnownNat x__sorted => Vector x__sorted (Finite v)) -> let
               items =  runST $ do
                   mv <- MS.unsafeNew
                   S.imapM_ (\i' i -> MS.write mv i (Identity i') ) ix'
                   S.freeze mv
-              in f $ Wector ix' items
+              in Wix $ Wector ix' items
 
-orderingWith :: forall v__n b r . (KnownNat v__n) => (Finite v__n -> Finite v__n -> Ordering) -> (forall x__sorted . KnownNat x__sorted => WectorFF Identity x__sorted v__n x__sorted  -> r ) -> r
-orderingWith cmp f = let
-  ix = S.generate id :: Vector v__n (Finite v__n)
+orderV :: (KnownNat x, Ord a) => Vector x a -> Wal Identity x
+orderV v = case orderX v of
+             Wix w -> Wal $ inverseW w
+
+-- orderingWith :: forall v__n b r . (KnownNat v__n) => (Finite v__n -> Finite v__n -> Ordering) -> (forall x__sorted . KnownNat x__sorted => WectorFF Identity x__sorted v__n x__sorted  -> r ) -> r
+orderWithX :: KnownNat v => (Finite v -> Finite v -> Ordering) -> Wix Identity v
+orderWithX @v cmp = let
+  ix = S.generate id :: Vector v (Finite v)
   in case Unsized.modify (Algo.sortBy cmp) (fromSized ix) of
          SomeSized ( ix' :: KnownNat x__sorted => Vector x__sorted (Finite v__n)) -> let
               items =  runST $ do
                   mv <- MS.unsafeNew
                   S.imapM_ (\i' i -> MS.write mv i (Identity i') ) ix'
                   S.freeze mv
-              in f $ Wector ix' items
+              in Wix $ Wector ix' items
 
-segmenting :: forall x__n a r . (KnownNat x__n, Eq a) => Vector x__n a -> (forall v__seg . KnownNat v__seg => WectorFF Vector1 x__n v__seg x__n -> r ) -> r
-segmenting v f = let
+segmentV :: (Eq a, KnownNat x) => Vector x a -> Wal Vector1 x
+segmentV v = let
    groupsWithValue = Unsized.groupBy (\a b -> snd a == snd b) (fromSized $ S.indexed v)
    ugroups = map (UnsafeFold1 . fmap fst) groupsWithValue  -- just keep the index
    in withSizedList ugroups $ \(groups :: Vector seg (Vector1 (Finite n))) -> let
@@ -275,16 +295,16 @@ segmenting v f = let
                  S.imapM_ (\gi (is :: Vector1 (Finite n)) -> mapM_ (\i -> MS.write mv i gi ) is) groups
                  S.freeze mv
            
-           in f $ Wector gindex groups
+           in Wal $ Wector gindex groups
    
-grouping :: forall x__n a r . (KnownNat x__n, Ord a) => Vector x__n a -> (forall v__grp . KnownNat v__grp => WectorFF Vector1 x__n v__grp x__n -> r ) -> r
-grouping v f = 
-   -- TODO rewrite to allocate all slices as one vector then sliced
-   -- segmenting do that, walues are slices of a main vector
-   -- walues group should be the same if possible
-   ordering v $ \order ->
-            segmenting (windex order @> v) $ \seg ->
-                       f (crossCompose order seg)
+-- grouping :: forall x__n a r . (KnownNat x__n, Ord a) => Vector x__n a -> (forall v__grp . KnownNat v__grp => WectorFF Vector1 x__n v__grp x__n -> r ) -> r
+-- TODO rewrite to allocate all slices as one vector then sliced
+-- segmenting do that, walues are slices of a main vector
+-- walues group should be the same if possible
+groupV :: (KnownNat x, Ord a) => Vector x a -> Wal Vector1 x 
+groupV v | Wix xOoX <- orderX v
+         , Wal oGgO <- segmentV (windex xOoX @> v)
+         = Wal $ crossCompose xOoX oGgO
 
 -- | To be used to combine left or right joins
 -- Technically we only use windex from grouping
@@ -297,10 +317,12 @@ data JoinSpine x__n v__joined a =
                  }
        deriving (Show, Eq)
 
-makingJoinSpine :: (KnownNat x__n, Ord a) => Vector x__n a -> (forall v__joined . KnownNat v__joined => JoinSpine x__n v__joined a -> r) -> r
-makingJoinSpine v f = 
-   grouping v $ \grp -> let uniqV = UnsafeAscU $ walues grp @=> v
-                        in f (JoinSpine uniqV grp)
+data JoinSpineV x a = forall v . KnownNat v => JoinSpineV (JoinSpine x v a)
+
+makeJoinSpineV :: (KnownNat x, Ord a) => Vector x a -> JoinSpineV x a
+makeJoinSpineV v | Wal grp <- groupV v
+                 , let  uniqV = UnsafeAscU $ walues grp @=> v
+                 = JoinSpineV $ JoinSpine uniqV grp
 
 mkSpine :: KnownNat xv_joined => AscU (Vector xv_joined) a -> JoinSpine xv_joined xv_joined a
 mkSpine uniq@(AscU v) = JoinSpine uniq (Wector ixs groups)
@@ -309,16 +331,16 @@ mkSpine uniq@(AscU v) = JoinSpine uniq (Wector ixs groups)
 
 -- | left join to an existing join spine. 
 rejoin  :: forall a x__n m v__joined . (Ord a, KnownNat m, KnownNat v__joined) => JoinSpine x__n v__joined a -> Vector m a -> WectorFF Unsized.Vector x__n v__joined m
-rejoin spine v' = 
-        grouping v' $ \grp' -> case grp' of 
-          ( _ :: WectorFF Vector1 n' grp' n') -> 
+rejoin spine v' 
+      | Wal grp' <- groupV v'
              -- get a unique represent for each group
              -- we assume that each groups are not empty
+      =
              let AscU uniqV = jsSpine spine
                  uniqV' = walues grp' @=> v' 
                  -- foreach i in the left group we try to find the corresponding value 
                  -- in the right group and collect the index in grp'
-                 ix'ac :: Vector v__joined (Maybe (Finite grp'))
+                 -- ix'ac :: Vector v__joined (Maybe (Finite grp'))
                  ix'ac = S.unfoldrN' (S.length' uniqV)
                                    (\(i,i'm) -> case i'm of 
                                    -- ^ ^^^
@@ -347,91 +369,91 @@ rejoin spine v' =
 
                                    )
                                    (0, Just 0)
-                 expand :: Maybe (Finite grp') -> Unsized.Vector (Finite m)
+                 -- expand :: Maybe (Finite grp') -> Unsized.Vector (Finite m)
                  expand gi'm = case gi'm of 
                                 Nothing -> mempty
                                 Just gi' -> unFold1 (walues grp' `S.index` gi')
 
              in Wector (windex $ jsGrouping spine) (expand <$> ix'ac) -- join
 
-joining :: forall x__n m a r . (KnownNat x__n, KnownNat m, Ord a) => Vector x__n a -> Vector m a -> (forall v__joined . KnownNat v__joined => WectorFF Vector1 x__n v__joined x__n -> WectorFF Unsized.Vector x__n v__joined m -> r ) -> r
-joining v v' f = makingJoinSpine v $ \spine -> f (jsGrouping spine) (rejoin spine v')
 
+data JoinV xn xm = forall v__joined . KnownNat v__joined => JoinV (WectorFF Vector1 xn v__joined xn) (WectorFF Unsized.Vector xn v__joined xm) 
+joinV :: (KnownNat xn, KnownNat xm, Ord a) => Vector xn a -> Vector xm a -> JoinV xn xm
+joinV v v' | JoinSpineV spine <- makeJoinSpineV v
+           = JoinV (jsGrouping spine) (rejoin spine v')
 -- | Moving window
-moving :: KnownNat xv => Int -> WectorFF Vector1 xv xv xv
-moving size = let
+window :: KnownNat xv => Int -> WectorFF Vector1 xv xv xv
+window size = let
     u = S.fromSized $ S.generate id
     windex = S.generate id
     walues = S.generate (\fi -> UnsafeFold1 $ Unsized.drop (fromIntegral fi + 1 - size) $ Unsized.take  (fromIntegral fi + 1) u)
     in Wector windex walues
 
 main :: IO ()
-main = do
-  withSizedList [ ("Adam-Navy", "Adam", 2)
-                , ("Adele-BLk", "Adele", 3)
-                , ("Adam-Black", "Adam", 10)
-                , ("Fiddle-Navy", "Fiddle", 64)
-                , ("Fiddle-Black", "Fiddle", 17)
-                , ("Fiddle-Blue", "Fiddle", 23)
-                ] $ \sales -> do
-     let (sku, style, qty) = S.unzip3 sales
-     withSizedList [ ("Adam", "Plate")
-                   , ("Fiddle", "Plate")
-                   , ("Adele", "Cup")
-                   ] $ \style'shape -> do
-       let (style_shape, shape_shape) = S.unzip style'shape 
-       
-       joining style style_shape $ \by_style on_style_ -> do
-         let Just on_style = traverse mkFold1 on_style_
-         print " ------- BY SHAPE ------ "
-         print on_style
-         mapM_ print $ S.zip sku $  wbroadcast on_style @=> style'shape -- shape_shape
-         print " ---- SUM by STYLE ---- "
-         let qty_style = sum <$> walues by_style @>$ qty
-         print qty_style
-         let shape = wbroadcast on_style @=> shape_shape
-         grouping shape $ \by_shape  ->  do
-           print by_shape
-           let qty_shape = sum <$> walues by_shape @>$ qty
-           print qty_shape
-           mapM_ print $ S.zip4 sku
-                                (windex by_style @> qty_style)
-                                (wbroadcast on_style @=> shape_shape )
-                                (windex by_shape @> qty_shape)
-                                
-           print " ---- RUNNING ---- "
-           print $ rmap (unFold1 <$> walues by_shape) (S.postscanl' (+) 0)  Nothing qty 
-     print " --- Moving avegare -- "
-     let ma = moving 2
-     print $ walues ma @>$ qty
-     print $ sum <$> walues ma @>$ qty
-     print " ==== Moving sorted === "
-     ordering sku  $ \by_sku ->  do
-         -- let mo = composeWith _ (moving 2) by_sku
-         let mo = crossCompose by_sku (moving 2)
-         mapM_ print $ S.zip sales $  wbroadcast mo @>$ qty
+main = withSizedList [ ("Adam-Navy", "Adam", 2)
+                              , ("Adele-BLk", "Adele", 3)
+                              , ("Adam-Black", "Adam", 10)
+                              , ("Fiddle-Navy", "Fiddle", 64)
+                              , ("Fiddle-Black", "Fiddle", 17)
+                              , ("Fiddle-Blue", "Fiddle", 23)
+                              ] $ \case
+     sales | (sku, style, qty) <- S.unzip3 sales
+           -> withSizedList [ ("Adam", "Plate")
+                            , ("Fiddle", "Plate")
+                            , ("Adele", "Cup")
+                            ] $ \case
+             style'shape 
+              | (style_shape, shape_shape) <- S.unzip style'shape 
+
+              , JoinV by_style on_style_ <- joinV style style_shape
+              -> do
+                  let Just on_style = traverse mkFold1 on_style_
+                  print " ------- BY SHAPE ------ "
+                  print on_style
+                  mapM_ print $ S.zip sku $  wbroadcast on_style @=> style'shape -- shape_shape
+                  print " ---- SUM by STYLE ---- "
+                  let qty_style = sum <$> walues by_style @>$ qty
+                  print qty_style
+                  let shape = wbroadcast on_style @=> shape_shape
+                  Wal by_shape <- return $ groupV shape 
+                  print by_shape
+                  let qty_shape = sum <$> walues by_shape @>$ qty
+                  print qty_shape
+                  mapM_ print $ S.zip4 sku
+                                       (windex by_style @> qty_style)
+                                       (wbroadcast on_style @=> shape_shape )
+                                       (windex by_shape @> qty_shape)
+
+                  print " ---- RUNNING ---- "
+                  print $ rmap (unFold1 <$> walues by_shape) (S.postscanl' (+) 0)  Nothing qty 
+
+                  print " --- Moving avegare -- "
+                  let ma = window 2
+                  print $ walues ma @>$ qty
+                  print $ sum <$> walues ma @>$ qty
+                  print " ==== Moving sorted === "
+                  Wix by_sku <- return $ orderX sku 
+                  let mo = crossCompose by_sku (window 2)
+                  mapM_ print $ S.zip sales $  wbroadcast mo @>$ qty
 
 
             
 
      
 _main = do
-   withSizedList [("a", 2), ("c", 1), ("m", 6), ("w", 0), ("c", 3) , ("p", 0) ] $ \v'q -> do
-      let (v,q) = S.unzip v'q
-      selecting (fmap (`elem` ["c", "w"]) v) $ \s1_ -> case F.toList <$> s1_ of
-      -- selectingWith id v $ \s1_ -> case s1_ of
-           (s1 :: WectorFF [] s1 n s1) ->
-                -- selectingWith (\u -> u <> Unsized.reverse u) (windex s1 @> v) $ \s2_ -> case s2_ of
-                -- selectingWith (Unsized.take 1 . Unsized.drop 1) (windex s1 @> v) $ \s2_ -> case s2_ of
-                selectingWith (Unsized.fromList . map snd
+   withSizedList [("a", 2), ("c", 1), ("m", 6), ("w", 0), ("c", 3) , ("p", 0) ] $ \case 
+      v'q | (v,q) <- S.unzip v'q
+          , Wix s1_ <- selectX (fmap (`elem` ["c", "w"]) v)
+          , s1 <- F.toList <$> s1_
+          , Wix s2 <- selectWithX (Unsized.fromList . map snd
                                                 . List.sort
                                                 . map (\i -> (S.index v (S.index (windex s1) i), i))
-                                                . Unsized.toList) (windex s1 @> v) $ \s2_ -> case s2_ of
-                  (s2 :: Wector s2 s1 ([ (Finite s2) ])) -> do
+                                                . Unsized.toList) (windex s1 @> v)
+          -> do
                        print ("S1", s1)
-                       let q1 = S.replicate $ S.sum $ windex s1 @> q :: Vector s1 Int
+                       let q1 = S.replicate $ S.sum $ windex s1 @> q -- :: Vector s1 Int
                        print ("S2", s2, windex s2 @> windex s1 @> v)
-                       let q2 = S.iterateN (+1) 100 :: Vector s2 Int
+                       let q2 = S.iterateN (+1) 100 -- :: Vector s2 Int
                        print q2
                        
                        let s2' = composeWith (@>=) s2 $ F.toList <$> s1
