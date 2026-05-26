@@ -1,9 +1,12 @@
 {-# LANGUAGE DeriveTraversable, PatternSynonyms #-}
 {-# LANGUAGE ExistentialQuantification, RankNTypes, DataKinds, KindSignatures, ScopedTypeVariables , TypeOperators #-}
-module Data.NoDF.Wector where
+module Data.NoDF.Wector 
+( module Data.NoDF.Wector
+)
+where
 
 import qualified Data.Vector.Sized as S
-import Data.Vector.Sized(Vector, index, pattern SomeSized, fromSized, withSizedList, imap)
+import Data.Vector.Sized(Vector, index, pattern SomeSized, fromSized, withSizedList)
 import qualified Data.Vector as Unsized
 --import qualified Data.Vector.Sized.Unbox as UBS
 import Data.Finite
@@ -50,7 +53,7 @@ rmap grpv f b0m v =
        mv <- case b0m of 
                Nothing ->  MS.unsafeNew
                Just b0 -> MS.replicate b0
-       S.mapM (\g -> case g of
+       S.mapM_ (\g -> case g of
                          SomeSized gz -> do
                             S.imapM_ (\gi b -> -- index in the current group
                                                      MS.write mv (index gz gi) b
@@ -68,15 +71,17 @@ data Wector x v a =
                    , walues :: Vector v a
                    }
      deriving (Show, Eq, Functor, Foldable, Traversable)
+
+type WectorFF f x v y = Wector x v (f (Finite y))
      
 wbroadcast :: Wector x v a -> Vector x a
 wbroadcast (Wector xV va) = xV @> va
 
-expandW :: Functor f => Wector x v (f (Finite x)) -> Wector x v (f (Finite v))
+expandW :: Functor f => WectorFF f x v x -> WectorFF f x v v
 expandW w@(Wector xV vXX) = w { walues = vXX @>$ xV } -- w { walues = walues xVvXX @>$ windex xVvXX }
 --                                    vXX            xV     vVV :: nv (
 
-wexpand :: Functor f => Wector nx nv (f (Finite nx)) -> Vector nv (f (Finite nv))
+wexpand :: Functor f => WectorFF f nx nv nx -> Vector nv (f (Finite nv))
 wexpand = walues . expandW
 
 {-
@@ -85,7 +90,7 @@ composeW :: (Monad f, av__m ~ bx__m)
          -> Wector       bx__m bv__o (f (Finite bx__m))
          -> Wector ax__n       bv__o (f (Finite ax__n))
 -}
-composeW :: (Monad f, av__m ~ bx__m) =>  Wector ax__n av__m (f (Finite ax__n)) -> Wector bx__m bv__o (f (Finite bx__m)) -> Wector ax__n bv__o (f (Finite ax__n))
+composeW :: (Monad f, av__m ~ bx__m) =>  WectorFF f ax__n av__m ax__n -> WectorFF f bx__m bv__o bx__m -> WectorFF f ax__n bv__o ax__n
 composeW (Wector nM mNN) (Wector mO oMM) = 
          Wector (nM @> mO)
                 (oMM @>= mNN)
@@ -96,30 +101,30 @@ composing, (>.>) :: (Monad f, av__m ~ bx__m)
                  -> ((Wector       bx__m bv__o (f (Finite bx__m)) -> r ) -> r)
                  -> ((Wector ax__n       bv__o (f (Finite ax__n)) -> r ) -> r)
 -}
-composing :: (Monad f, av__m ~ bx__m) => ((Wector ax__n av__m (f (Finite ax__n)) -> r ) -> r) -> ((Wector bx__m bv__o (f (Finite bx__m)) -> r ) -> r) -> ((Wector ax__n bv__o (f (Finite ax__n)) -> r ) -> r)
+composing, (>.>) :: (Monad f, av__m ~ bx__m) => ((WectorFF f ax__n av__m ax__n -> r ) -> r) -> ((WectorFF f bx__m bv__o bx__m -> r ) -> r) -> ((WectorFF f ax__n bv__o ax__n -> r ) -> r)
 composing nMmNN_f mOoMM_f f = nMmNN_f (\nMmNN  -> mOoMM_f (\mOoMM -> f $ composeW nMmNN mOoMM ))
 cab >.> ca = composing cab ca
 
 -- | op can by @>= or @>~ or @>$
--- composeWith :: Monad f => Wector a ab (f (Finite a)) -> Wector ab abcd (f (Finite ab)) -> Wector a abcd (f (Finite a))
+-- composeWith :: Monad f => WectorFF f a ab a -> WectorFF f ab abcd ab -> WectorFF f a abcd a
 {- composeWith :: (Monad f, av__m ~ bx__m)
  -             => Wector ax__n av__m      (f (Finite ax__n))
  -             -> Wector       bx__m bv__o (f (Finite av__m))
  -             -> Wector ax__n       bv__o (f (Finite ax__n))
  -}
--- composeWith :: (Monad f, av__m ~ bx__m) =>  _ -> Wector ax__n av__m (f (Finite ax__n)) -> Wector bx__m bv__o (f (Finite bx__m)) -> Wector ax__n bv__o (f (Finite ax__n))
+-- composeWith :: (Monad f, av__m ~ bx__m) =>  _ -> WectorFF f ax__n av__m ax__n -> WectorFF f bx__m bv__o bx__m -> WectorFF f ax__n bv__o ax__n
 composeWith :: (av__m ~ bx__m) => (Vector bv__o b -> Vector av__m  a -> Vector bv__o c ) -> Wector ax__n av__m a -> Wector bx__m bv__o b -> Wector ax__n bv__o c
 composeWith op (Wector nM mNN) (Wector mO oMM) = 
          Wector (nM @> mO)
                 (oMM `op` mNN)
 
-inverseW :: Wector x v (Identity (Finite x)) -> Wector v x (Identity (Finite v))
+inverseW :: WectorFF Identity x v x -> WectorFF Identity v x v
 inverseW w = Wector ( coerceV $ walues w )
                     ( coerceV $ windex w)
                     
 
 -- | op can be @> or @>$
-broadcastWith :: Monad f => (Vector av__g a -> Vector bx__m (Finite av__g) -> Vector rx__g2 b) -> Wector ax__n av__g a -> Wector bx__m av__g (f (Finite rx__g2)) -> f ( Wector ax__n rx__g2 b )
+broadcastWith :: Monad f => (Vector av__g a -> Vector bx__m (Finite av__g) -> Vector rx__g2 b) -> Wector ax__n av__g a -> WectorFF f bx__m av__g rx__g2 -> f ( Wector ax__n rx__g2 b )
 {-
 broadcastWith :: (Monad f, bv__g ~ av__g )
               => (   Vector             av__g         a -> Vector bx__m (Finite av__g) -> Vector rx__g2 b)
@@ -127,7 +132,7 @@ broadcastWith :: (Monad f, bv__g ~ av__g )
               ->     Wector       bx__m bv__g         (f (Finite rx__g2))
               -> f ( Wector ax__n             rx__g2  b )
  -}
-broadcastWith op a@(Wector nG ga)  b@(Wector mG gG2s)  = fmap go $ sequence gG2s where
+broadcastWith op _a@(Wector nG ga)  _b@(Wector mG gG2s)  = fmap go $ sequence gG2s where
             go gG2 = Wector ( nG @> gG2)
                            ( ga `op` mG)
 
@@ -137,7 +142,7 @@ crossCompose :: Functor f
               -> Wector ax__n       bv__grp (f (Finite ax__n))
               -> Wector       av__m bv__grp (f (Finite av__m))
 -}
-crossCompose :: Functor f => Wector ax__n av__m (Identity (Finite ax__n)) -> Wector ax__n bv__grp (f (Finite ax__n)) -> Wector av__m bv__grp (f (Finite av__m))
+crossCompose :: Functor f => WectorFF Identity ax__n av__m ax__n -> WectorFF f ax__n bv__grp ax__n -> WectorFF f av__m bv__grp av__m
 crossCompose (Wector ax_nM av_mNN) (Wector nG gNN) = 
     Wector (av_mNN @=> nG)
            (gNN @>$ ax_nM)
@@ -157,7 +162,7 @@ crossing, (>.<) :: Functor f
 crossing nMmNN_f nGgNN_f f = nMmNN_f (\nMmNN -> nGgNN_f (\nGgNN -> f $ crossCompose nMmNN nGgNN))
 ab >.< cb = crossing ab cb
 
-selecting ::  forall v__n r . KnownNat v__n => Vector v__n Bool -> (forall x__selected . KnownNat x__selected => Wector x__selected v__n (Maybe (Finite x__selected)) ->  r ) -> r
+selecting ::  forall v__n r . KnownNat v__n => Vector v__n Bool -> (forall x__selected . KnownNat x__selected => WectorFF Maybe x__selected v__n x__selected ->  r ) -> r
 selecting v f = let 
    selection = Unsized.filter (\fi -> v `index` fi )
                             $ fromSized 
@@ -171,7 +176,7 @@ selecting v f = let
            in f $ Wector sel back
 
 -- | specialized version of selecting which doesn't create an intermedaiat
-filtering :: forall a v__n r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__filtered . KnownNat x__filtered => Wector x__filtered v__n (Maybe (Finite x__filtered)) -> r ) -> r
+filtering :: forall a v__n r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__filtered . KnownNat x__filtered => WectorFF Maybe x__filtered v__n x__filtered -> r ) -> r
 filtering keep v f = let
    selection = Unsized.filter (\fi -> keep (v `index` fi) )
                                                               $ fromSized 
@@ -184,13 +189,13 @@ filtering keep v f = let
                         S.freeze mv
            in f $ Wector sel back
 
-taking :: forall v__n a r . KnownNat v__n => Int -> Vector v__n a -> (forall x__taken . KnownNat x__taken => Wector x__taken v__n (Maybe (Finite x__taken)) -> r ) -> r
+taking :: forall v__n a r . KnownNat v__n => Int -> Vector v__n a -> (forall x__taken . KnownNat x__taken => WectorFF Maybe x__taken v__n x__taken -> r ) -> r
 taking n v f = let 
-   take = case n of 
+   take_ = case n of 
                _ | n > 0 -> Unsized.take n
                _ | n == 0 -> id
-               _ | n < 0 -> Unsized.drop (S.length v + n)
-   selection = take $ fromSized 
+               _ {- | n < 0 -} -> Unsized.drop (S.length v + n)
+   selection = take_ $ fromSized 
                     $ S.generate id
    in case selection of
         SomeSized sel -> let 
@@ -200,21 +205,21 @@ taking n v f = let
                         S.freeze mv
            in f $ Wector sel back
 
-dropping :: forall v__n a r . KnownNat v__n => Int -> Vector v__n a -> (forall x__dropped . KnownNat x__dropped => Wector x__dropped v__n (Maybe (Finite x__dropped)) -> r) -> r
+dropping :: forall v__n a r . KnownNat v__n => Int -> Vector v__n a -> (forall x__dropped . KnownNat x__dropped => WectorFF Maybe x__dropped v__n x__dropped -> r) -> r
 dropping n = selectingWithMaybe (Unsized.drop n)
 
 
-droppingWhile :: forall v__n a r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__dropped . KnownNat x__dropped => Wector x__dropped v__n (Maybe (Finite x__dropped)) -> r) -> r
-droppingWhile p v = selectingWithMaybe (Unsized.dropWhile pi) v where
-    pi i = p (index v i )
+droppingWhile :: forall v__n a r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__dropped . KnownNat x__dropped => WectorFF Maybe x__dropped v__n x__dropped -> r) -> r
+droppingWhile p v = selectingWithMaybe (Unsized.dropWhile pi_) v where
+    pi_ i = p (index v i )
 
-takingWhile :: forall v__n a r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__taken . KnownNat x__taken => Wector x__taken v__n (Maybe (Finite x__taken)) -> r) -> r
-takingWhile p v = selectingWithMaybe (Unsized.takeWhile pi) v where
-    pi i = p (index v i )
+takingWhile :: forall v__n a r . KnownNat v__n => (a -> Bool) -> Vector v__n a -> (forall x__taken . KnownNat x__taken => WectorFF Maybe x__taken v__n x__taken -> r) -> r
+takingWhile p v = selectingWithMaybe (Unsized.takeWhile pi_) v where
+    pi_ i = p (index v i )
 
 -- | If subset should return Maybe insteaf of List
-selectingWith  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => Wector x__selected v__n [Finite x__selected] -> r) -> r
-selectingWith select v f = let
+selectingWith  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => WectorFF []  x__selected v__n x__selected -> r) -> r
+selectingWith select _proxy_v f = let
    selection = select $ fromSized 
                  $ S.generate id
    in case selection of
@@ -226,8 +231,8 @@ selectingWith select v f = let
            in f $ Wector sel back
 
 -- | Like selectingWith but assume that element are not duplicated. Therefore, we can use a Maybe (present or not) instead of a list
-selectingWithMaybe  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => Wector x__selected v__n (Maybe (Finite x__selected)) -> r) -> r
-selectingWithMaybe select v f = let
+selectingWithMaybe  :: forall v__n a r . KnownNat v__n => (Unsized.Vector (Finite v__n) -> Unsized.Vector (Finite v__n)) -> Vector v__n a -> (forall x__selected . KnownNat x__selected => WectorFF Maybe x__selected v__n x__selected -> r) -> r
+selectingWithMaybe select _proxy_v f = let
    selection = select $ fromSized 
                  $ S.generate id
    in case selection of
@@ -249,7 +254,7 @@ ordering v f = let
                   S.freeze mv
               in f $ Wector ix' items
 
-orderingWith :: forall v__n b r . (KnownNat v__n) => (Finite v__n -> Finite v__n -> Ordering) -> (forall x__sorted . KnownNat x__sorted => Wector x__sorted v__n (Identity (Finite x__sorted )) -> r ) -> r
+orderingWith :: forall v__n b r . (KnownNat v__n) => (Finite v__n -> Finite v__n -> Ordering) -> (forall x__sorted . KnownNat x__sorted => WectorFF Identity x__sorted v__n x__sorted  -> r ) -> r
 orderingWith cmp f = let
   ix = S.generate id :: Vector v__n (Finite v__n)
   in case Unsized.modify (Algo.sortBy cmp) (fromSized ix) of
@@ -260,7 +265,7 @@ orderingWith cmp f = let
                   S.freeze mv
               in f $ Wector ix' items
 
-segmenting :: forall x__n a r . (KnownNat x__n, Eq a) => Vector x__n a -> (forall v__seg . KnownNat v__seg => Wector x__n v__seg (Vector1 (Finite x__n)) -> r ) -> r
+segmenting :: forall x__n a r . (KnownNat x__n, Eq a) => Vector x__n a -> (forall v__seg . KnownNat v__seg => WectorFF Vector1 x__n v__seg x__n -> r ) -> r
 segmenting v f = let
    groupsWithValue = Unsized.groupBy (\a b -> snd a == snd b) (fromSized $ S.indexed v)
    ugroups = map (UnsafeFold1 . fmap fst) groupsWithValue  -- just keep the index
@@ -272,7 +277,7 @@ segmenting v f = let
            
            in f $ Wector gindex groups
    
-grouping :: forall x__n a r . (KnownNat x__n, Ord a) => Vector x__n a -> (forall v__grp . KnownNat v__grp => Wector x__n v__grp (Vector1 (Finite x__n)) -> r ) -> r
+grouping :: forall x__n a r . (KnownNat x__n, Ord a) => Vector x__n a -> (forall v__grp . KnownNat v__grp => WectorFF Vector1 x__n v__grp x__n -> r ) -> r
 grouping v f = 
    -- TODO rewrite to allocate all slices as one vector then sliced
    -- segmenting do that, walues are slices of a main vector
@@ -288,7 +293,7 @@ grouping v f =
 -- Also a Wector doesn't carry the fact that the vector has been sorted and is unique
 data JoinSpine x__n v__joined a =
        JoinSpine { jsSpine :: AscU (Vector v__joined) a -- ^ sorted and unique vector
-                 , jsGrouping :: Wector x__n v__joined (Vector1 (Finite x__n)) -- ^ the grouping
+                 , jsGrouping :: WectorFF Vector1 x__n v__joined x__n -- ^ the grouping
                  }
        deriving (Show, Eq)
 
@@ -303,10 +308,10 @@ mkSpine uniq@(AscU v) = JoinSpine uniq (Wector ixs groups)
          groups = fmap (UnsafeFold1 . Unsized.singleton) ixs
 
 -- | left join to an existing join spine. 
-rejoin  :: forall a x__n m v__joined . (Ord a, KnownNat m, KnownNat v__joined) => JoinSpine x__n v__joined a -> Vector m a -> Wector x__n v__joined (Unsized.Vector (Finite m))
+rejoin  :: forall a x__n m v__joined . (Ord a, KnownNat m, KnownNat v__joined) => JoinSpine x__n v__joined a -> Vector m a -> WectorFF Unsized.Vector x__n v__joined m
 rejoin spine v' = 
         grouping v' $ \grp' -> case grp' of 
-          ( _ :: Wector n' grp' (Vector1 (Finite n'))) -> 
+          ( _ :: WectorFF Vector1 n' grp' n') -> 
              -- get a unique represent for each group
              -- we assume that each groups are not empty
              let AscU uniqV = jsSpine spine
@@ -349,11 +354,11 @@ rejoin spine v' =
 
              in Wector (windex $ jsGrouping spine) (expand <$> ix'ac) -- join
 
-joining :: forall x__n m a r . (KnownNat x__n, KnownNat m, Ord a) => Vector x__n a -> Vector m a -> (forall v__joined . KnownNat v__joined => Wector x__n v__joined (Vector1 (Finite x__n)) -> Wector x__n v__joined (Unsized.Vector (Finite m)) -> r ) -> r
+joining :: forall x__n m a r . (KnownNat x__n, KnownNat m, Ord a) => Vector x__n a -> Vector m a -> (forall v__joined . KnownNat v__joined => WectorFF Vector1 x__n v__joined x__n -> WectorFF Unsized.Vector x__n v__joined m -> r ) -> r
 joining v v' f = makingJoinSpine v $ \spine -> f (jsGrouping spine) (rejoin spine v')
 
 -- | Moving window
-moving :: KnownNat xv => Int -> Wector xv xv (Vector1 (Finite xv))
+moving :: KnownNat xv => Int -> WectorFF Vector1 xv xv xv
 moving size = let
     u = S.fromSized $ S.generate id
     windex = S.generate id
@@ -415,7 +420,7 @@ _main = do
       let (v,q) = S.unzip v'q
       selecting (fmap (`elem` ["c", "w"]) v) $ \s1_ -> case F.toList <$> s1_ of
       -- selectingWith id v $ \s1_ -> case s1_ of
-           (s1 :: Wector s1 n ([ (Finite s1)])) ->
+           (s1 :: WectorFF [] s1 n s1) ->
                 -- selectingWith (\u -> u <> Unsized.reverse u) (windex s1 @> v) $ \s2_ -> case s2_ of
                 -- selectingWith (Unsized.take 1 . Unsized.drop 1) (windex s1 @> v) $ \s2_ -> case s2_ of
                 selectingWith (Unsized.fromList . map snd
