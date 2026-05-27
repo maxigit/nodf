@@ -5,7 +5,7 @@ cabal-version: 2.2
 -- see: https://github.com/sol/hpack
 
 name:           nodf
-version:        0.1.0.0
+version:        0.1.1.0
 category:       Statistics
 homepage:       https://github.com/maxigit/nodf#readme
 bug-reports:    https://github.com/maxigit/nodf/issues
