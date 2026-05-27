@@ -59,11 +59,12 @@ data Pivot name x v__joined = Pivot { pvKeys :: WectorFF Vector1 x v__joined x
                                     }
                                deriving (Show, Eq)
 data PivotV name x = forall v . PivotV (Pivot name x v)
-pivotV :: (Ord name, Ord key, KnownNat x) => Vector n key -> Vector n name -> PivotV name x
+pivotV :: (Ord name, Ord key, KnownNat x) => Vector x key -> Vector x name -> PivotV name x
 pivotV keyv varnamev | JoinSpineV spine <- makeJoinSpineV keyv
                      = PivotV $ Pivot (jsGrouping spine)
                                       (pivotWithSpine spine keyv varnamev)
 
+pattern PivV keys colMap = PivotV (Pivot keys colMap)
 -- pivoting :: (Ord name, Ord key, KnownNat n) => Vector n key -> Vector n name -> ( forall joined . KnownNat joined => Wector n joined (Vector1 (Finite n)) -> Map.Map name (Vector joined (V.Vector (Finite n))) -> r ) -> r
 -- pivoting keyv varnamev f =  
 --    -- first we collect all unique keys throught the whole vector

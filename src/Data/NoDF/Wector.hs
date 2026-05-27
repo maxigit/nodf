@@ -79,8 +79,8 @@ data Wix f v = forall x . KnownNat x => Wix (WectorFF f x v x)
 -- | Self Wector with Existential values
 data Wal f x = forall v . KnownNat v => Wal (WectorFF f x v x)
 
-pattern Wixor x v = Wix (Wector x v)
-pattern Walor x v = Wal (Wector x v)
+pattern WectorX x v = Wix (Wector x v)
+pattern WectorV x v = Wal (Wector x v)
 
 wbroadcast :: Wector x v a -> Vector x a
 wbroadcast (Wector xV va) = xV @> va
@@ -318,6 +318,8 @@ data JoinSpine x__n v__joined a =
        deriving (Show, Eq)
 
 data JoinSpineV x a = forall v . KnownNat v => JoinSpineV (JoinSpine x v a)
+
+pattern JSpineV spine grp = JoinSpineV (JoinSpine spine grp)
 
 makeJoinSpineV :: (KnownNat x, Ord a) => Vector x a -> JoinSpineV x a
 makeJoinSpineV v | Wal grp <- groupV v
